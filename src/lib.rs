@@ -16,8 +16,7 @@ pub mod source_code;
 pub mod errors;
 
 // https://kotlinlang.org/docs/reference/grammar.html
-
-
+// https://play.kotlinlang.org
 fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
     let file = File::open(path);
     let mut file = if let Ok(f) = file { f } else { return; };
@@ -47,7 +46,6 @@ fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
 mod tests {
     use crate::tokenizer::get_token_stream;
     use crate::tokenizer::read_all_tokens;
-    use crate::tokenizer::read_token;
     use crate::tokenizer::Token;
 
     use super::*;
@@ -77,6 +75,7 @@ mod tests {
     }
 
     #[test]
+//    #[ignore]
     fn get_code() {
         let ref mut codes: Vec<SourceCode> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/ModelLoader/src/".as_ref(), codes);

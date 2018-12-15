@@ -11,20 +11,21 @@ use crate::source_code::to_str;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
-    UnknownCharacter(Span, u8)
+    UnknownCharacter(u8),
+    UnsupportedLiteralPrefix(char)
 }
 
 #[derive(Clone)]
 pub enum KtError {
-    Tokenizer { code: SourceCode, info: TokenizerError }
+    Tokenizer { code: SourceCode, span: Span, info: TokenizerError }
 }
 
 impl Display for KtError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            KtError::Tokenizer { code, info } => {
+            KtError::Tokenizer { code, span, info } => {
                 write!(f, "\n\nAn error occurred: \n")?;
-                print_tokenizer_error(f, code, info)?;
+                print_tokenizer_error(f, code, *span, info)?;
                 write!(f, "\n\n")?;
             }
         }
@@ -38,11 +39,15 @@ impl Debug for KtError {
     }
 }
 
-fn print_tokenizer_error(f: &mut Write, code: &SourceCode, error: &TokenizerError) -> Result<(), Error> {
+fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &TokenizerError) -> Result<(), Error> {
     match error {
-        TokenizerError::UnknownCharacter(span, c) => {
+        TokenizerError::UnknownCharacter(c) => {
             write!(f, "Found unknown character: '{}' ({})\n", *c as char, *c)?;
-            write!(f, "{}", print_code_location(&to_str(code), *span))?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::UnsupportedLiteralPrefix(c) => {
+            write!(f, "Unsupported number prefix: 0{}\n", *c)?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
     }
 
