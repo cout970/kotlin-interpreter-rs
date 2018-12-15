@@ -1,16 +1,15 @@
-use crate::SourceCode;
+use crate::errors::KtError;
+use crate::errors::TokenizerError;
+use crate::source_code::SOURCE_CODE_PADDING;
+use crate::source_code::SourceCode;
+use crate::source_code::Span;
 
 pub struct TokenStream {
     source: SourceCode,
     pos: u32,
 }
 
-pub enum TokenizerError {
-    UnknownCharacter(u8)
-}
-
-pub type Span = (u32, u32);
-
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Id(String),
     Literal(Literal),
@@ -29,12 +28,14 @@ pub enum Token {
     DoubleColon,
     Dollar,
     Dot,
+    DoubleDot,
     Comma,
     QuestionMark,
     ExclamationMark,
+    NotEquals,
+    NotDoubleEquals,
     LeftArrow,
     Elvis,
-    Range,
     Plus,
     DoublePlus,
     Minus,
@@ -43,6 +44,8 @@ pub enum Token {
     Slash,
     Percent,
     Equals,
+    DoubleEquals,
+    TripleEquals,
     PlusEquals,
     MinusEquals,
     TimesEquals,
@@ -55,6 +58,7 @@ pub enum Token {
     EOF,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Char(char),
     String(String),
@@ -68,7 +72,7 @@ pub fn get_token_stream(input: SourceCode) -> TokenStream {
     TokenStream { source: input, pos: 0 }
 }
 
-pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), TokenizerError> {
+pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), KtError> {
     trim_spaces(stream);
     let start = stream.pos;
     let token = read_token_aux(stream)?;
@@ -77,13 +81,32 @@ pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), TokenizerEr
     Ok(((start, end), token))
 }
 
-fn read_token_aux(stream: &mut TokenStream) -> Result<Token, TokenizerError> {
-    if stream.pos as usize >= stream.source.len() {
+pub fn read_all_tokens(stream: &mut TokenStream) -> Result<Vec<(Span, Token)>, KtError> {
+    let mut tks = vec![];
+
+    loop {
+        let pair = read_token(stream)?;
+        if let Token::EOF = &pair.1 {
+            tks.push(pair);
+            break;
+        } else {
+            tks.push(pair);
+        }
+    }
+
+    Ok(tks)
+}
+
+fn read_token_aux(stream: &mut TokenStream) -> Result<Token, KtError> {
+    if (stream.pos as usize + SOURCE_CODE_PADDING) >= stream.source.len() {
         return Ok(Token::EOF);
     }
 
-    let c = stream.source[stream.pos as usize];
-    let tk = match c {
+    // look ahead characters
+    let c0 = stream.source[stream.pos as usize];
+    let c1 = stream.source[(stream.pos + 1) as usize];
+
+    let tk = match c0 {
         b'\n' => Token::Newline,
         b';' => Token::Semicolon,
         b'(' => Token::LeftParen,
@@ -95,37 +118,119 @@ fn read_token_aux(stream: &mut TokenStream) -> Result<Token, TokenizerError> {
         b'<' => Token::LeftAngleBracket,
         b'>' => Token::RightAngleBracket,
         b'@' => Token::At,
-//        b':' => Token::Colon,
-//        b'::' => Token::DoubleColon,
+        b':' => match c1 {
+            b':' => {
+                stream.pos += 1;
+                Token::DoubleColon
+            }
+            _ => Token::Colon
+        },
         b'$' => Token::Dollar,
-        b'.' => Token::Dot,
-//        b'..' => Token::Range,
+        b'.' => match c1 {
+            b'.' => {
+                stream.pos += 1;
+                Token::DoubleDot
+            }
+            _ => Token::Dot
+        },
         b',' => Token::Comma,
-//        b'?:' => Token::Elvis,
-        b'?' => Token::QuestionMark,
-        b'!' => Token::ExclamationMark,
-//        b'->' => Token::LeftArrow,
-//        b'..' => Token::Range,
-        b'+' => Token::Plus,
-//        b'--' => Token::DoublePlus,
-        b'-' => Token::Minus,
-//        b'--' => Token::DoubleMinus,
-        b'*' => Token::Asterisk,
-        b'/' => Token::Slash,
-        b'%' => Token::Percent,
-        b'=' => Token::Equals,
-//        b'+=' => Token::PlusEquals,
-//        b'-=' => Token::MinusEquals,
-//        b'*=' => Token::TimesEquals,
-//        b'/=' => Token::DivEquals,
-//        b'%=' => Token::ModEquals,
-        b'&' => Token::Ampersand,
-//        b'&&' => Token::DoubleAmpersand,
-        b'|' => Token::Pipe,
-//        b'||' => Token::DoublePipe,
-        _ => return Err(TokenizerError::UnknownCharacter(c))
+        b'?' => match c1 {
+            b':' => {
+                stream.pos += 1;
+                Token::Elvis
+            }
+            _ => Token::QuestionMark
+        },
+        b'!' => match c1 {
+            b'=' => {
+                stream.pos += 1;
+                match stream.source[(stream.pos + 1) as usize] {
+                    b'=' => {
+                        stream.pos += 1;
+                        Token::NotDoubleEquals
+                    }
+                    _ => Token::NotEquals
+                }
+            }
+            _ => Token::ExclamationMark
+        },
+        b'+' => match c1 {
+            b'+' => {
+                stream.pos += 1;
+                Token::DoublePlus
+            }
+            b'=' => {
+                stream.pos += 1;
+                Token::PlusEquals
+            }
+            _ => Token::Plus
+        },
+        b'-' => match c1 {
+            b'-' => {
+                stream.pos += 1;
+                Token::DoubleMinus
+            }
+            b'>' => {
+                stream.pos += 1;
+                Token::LeftArrow
+            }
+            _ => Token::Minus
+        },
+        b'*' => match c1 {
+            b'=' => {
+                stream.pos += 1;
+                Token::TimesEquals
+            }
+            _ => Token::Asterisk
+        },
+        b'/' => match c1 {
+            b'=' => {
+                stream.pos += 1;
+                Token::DivEquals
+            }
+            _ => Token::Slash
+        },
+        b'%' => match c1 {
+            b'=' => {
+                stream.pos += 1;
+                Token::ModEquals
+            }
+            _ => Token::Percent
+        },
+        b'=' => match c1 {
+            b'=' => {
+                stream.pos += 1;
+                match stream.source[(stream.pos + 1) as usize] {
+                    b'=' => {
+                        stream.pos += 1;
+                        Token::TripleEquals
+                    }
+                    _ => Token::DoubleEquals
+                }
+            }
+            _ => Token::Equals
+        },
+        b'&' => match c1 {
+            b'&' => {
+                stream.pos += 1;
+                Token::DoubleAmpersand
+            }
+            _ => Token::Ampersand
+        },
+        b'|' => match c1 {
+            b'|' => {
+                stream.pos += 1;
+                Token::DoublePipe
+            }
+            _ => Token::Pipe
+        },
+        _ => return Err(KtError::Tokenizer {
+            code: stream.source.clone(),
+            info: TokenizerError::UnknownCharacter((stream.pos, stream.pos), c0),
+        })
     };
 
+    stream.pos += 1;
     Ok(tk)
 }
 
