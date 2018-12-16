@@ -13,6 +13,8 @@ pub struct TokenStream {
 pub enum Token {
     Id(String),
     Literal(Literal),
+    LitChar(char),
+    LitString(String),
     Semicolon,
     Newline,
     LeftParen,
@@ -61,8 +63,6 @@ pub enum Token {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
-    Char(char),
-    String(String),
     Double(f64),
     Float(f32),
     Int(i32),
@@ -98,6 +98,7 @@ pub fn get_token_stream(input: SourceCode) -> TokenStream {
 
 pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), KtError> {
     trim_spaces(stream);
+    trim_comments(stream)?;
     let start = stream.pos;
     let token = read_token_aux(stream)?;
     let end = stream.pos;
@@ -250,6 +251,8 @@ fn read_token_aux(stream: &mut TokenStream) -> Result<Token, KtError> {
             }
             _ => Token::Pipe
         },
+        b'"' => read_string(stream)?,
+        b'\'' => read_char(stream)?,
         b'a'..=b'z' | b'A'..=b'Z' => read_identifier(stream),
         b'0'..=b'9' => read_number(stream)?,
         _ => return Err(KtError::Tokenizer {
@@ -276,6 +279,113 @@ fn read_identifier(stream: &mut TokenStream) -> Token {
     }
 
     Token::Id(id)
+}
+
+fn read_string(stream: &mut TokenStream) -> Result<Token, KtError> {
+    let triple = stream.read_char(0) == '"' && stream.read_char(1) == '"' && stream.read_char(2) == '"';
+    let mut chars = vec![];
+    let start = stream.pos;
+
+    if triple {
+        stream.next();
+        stream.next();
+        stream.next();
+        loop {
+            let c0 = stream.read_u8(0);
+            let c1 = stream.read_u8(1);
+            let c2 = stream.read_u8(2);
+
+            if c0 == b'"' && c1 == b'"' && c2 == b'"' {
+                stream.next();
+                stream.next();
+                stream.next();
+                break;
+            } else if c0 == 0 {
+                return Err(KtError::Tokenizer {
+                    code: stream.source.clone(),
+                    span: (start, stream.pos),
+                    info: TokenizerError::ExpectedEndOfString,
+                });
+            }
+
+            chars.push(c0);
+            stream.next()
+        }
+    } else {
+        stream.next();
+        loop {
+            let c = stream.read_u8(0);
+
+            if c == b'"' {
+                stream.next();
+                break;
+            } else if c == b'\n' {
+                return Err(KtError::Tokenizer {
+                    code: stream.source.clone(),
+                    span: (start, stream.pos),
+                    info: TokenizerError::ExpectedEndOfString,
+                });
+            }
+
+            chars.push(c);
+            stream.next()
+        }
+    }
+
+    Ok(Token::LitString(String::from_utf8_lossy(&chars).to_string()))
+}
+
+fn read_char(stream: &mut TokenStream) -> Result<Token, KtError> {
+    let c: char;
+    let start = stream.pos;
+
+    stream.next(); // skip '
+    let c0 = stream.read_char(0);
+    stream.next(); // skip char
+
+    if c0 == '\\' {
+        let c1 = stream.read_char(0);
+
+        c = match c1 {
+            '0'..='3' => {
+                // TODO read octal number of 3 digits
+                'A'
+            }
+            'b' => 0x0008 as char,
+            't' => '\t',
+            'n' => '\n',
+            'f' => 0x000C as char,
+            'r' => '\r',
+            '"' => '"',
+            '\'' => '\'',
+            '\\' => '\\',
+            'u' => {
+                // TODO read hex number
+                'A'
+            },
+            _ => {
+                return Err(KtError::Tokenizer {
+                    code: stream.source.clone(),
+                    span: (start, stream.pos),
+                    info: TokenizerError::InvalidScapeChar(c1),
+                });
+            }
+        };
+    } else {
+        c = c0;
+    }
+
+    if stream.read_char(0) != '\'' {
+        return Err(KtError::Tokenizer {
+            code: stream.source.clone(),
+            span: (start, stream.pos),
+            info: TokenizerError::ExpectedEndOfChar,
+        });
+    }
+
+    stream.next(); // skip '
+
+    Ok(Token::LitChar(c))
 }
 
 fn read_number(stream: &mut TokenStream) -> Result<Token, KtError> {
@@ -436,10 +546,8 @@ fn contains(c: char, start: char, end: char) -> bool {
     c as u32 >= start as u32 && c as u32 <= end as u32
 }
 
-
 fn trim_spaces(stream: &mut TokenStream) {
     loop {
-        if stream.pos as usize >= stream.source.len() { break; }
         let c = stream.read_u8(0);
 
         if c == b' ' || c == b'\t' || c == b'\r' {
@@ -448,6 +556,55 @@ fn trim_spaces(stream: &mut TokenStream) {
             break;
         }
     }
+}
+
+fn trim_comments(stream: &mut TokenStream) -> Result<(), KtError> {
+    loop {
+        let start = stream.pos;
+        let c0 = stream.read_char(0);
+        let c1 = stream.read_char(1);
+
+        if c0 == '/' && c1 == '/' {
+            stream.next();
+            stream.next();
+            loop {
+                let c = stream.read_u8(0);
+
+                if c == 0 || c == b'\n' {
+                    break;
+                }
+                stream.next();
+            }
+
+            trim_spaces(stream);
+        } else if c0 == '/' && c1 == '*' {
+            stream.next();
+            stream.next();
+            loop {
+                let c0 = stream.read_u8(0);
+                let c1 = stream.read_u8(1);
+
+                if c0 == 0 {
+                    return Err(KtError::Tokenizer {
+                        code: stream.source.clone(),
+                        span: (start, stream.pos),
+                        info: TokenizerError::UnclosedComment,
+                    });
+                }
+
+                if c0 == b'*' && c1 == b'/' {
+                    break;
+                }
+                stream.next();
+            }
+
+            trim_spaces(stream);
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -486,5 +643,11 @@ mod tests {
         assert_eq!(Token::Literal(Literal::Int(0x0)), read_single_token("0x0"));
         assert_eq!(Token::Literal(Literal::Int(1_000)), read_single_token("1_000"));
         assert_eq!(Token::Literal(Literal::Int(0b010101)), read_single_token("0b010101"));
+    }
+
+    #[test]
+    fn check_string() {
+        assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"abc\""));
+        assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"\"\"abc\"\"\""));
     }
 }

@@ -12,7 +12,11 @@ use crate::source_code::to_str;
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
     UnknownCharacter(u8),
-    UnsupportedLiteralPrefix(char)
+    UnsupportedLiteralPrefix(char),
+    ExpectedEndOfString,
+    ExpectedEndOfChar,
+    UnclosedComment,
+    InvalidScapeChar(char),
 }
 
 #[derive(Clone)]
@@ -47,6 +51,22 @@ fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &T
         }
         TokenizerError::UnsupportedLiteralPrefix(c) => {
             write!(f, "Unsupported number prefix: 0{}\n", *c)?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::ExpectedEndOfString => {
+            write!(f, "Found end of the line while reading a string\n")?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::ExpectedEndOfChar => {
+            write!(f, "Found expecting end of character literal\n")?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::UnclosedComment => {
+            write!(f, "Found unclosed comment\n")?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::InvalidScapeChar(c) => {
+            write!(f, "Found invalid scape character: '{}' ({})\n", *c, *c as u32)?;
             write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
     }

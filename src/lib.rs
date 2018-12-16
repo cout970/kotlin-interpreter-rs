@@ -34,9 +34,10 @@ fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
         if let Some(ext) = path.extension() {
             if ext == "kt" {
                 let ref mut string = String::new();
-                println!("Reading file {:?}", path);
-                file.read_to_string(string).unwrap();
+                let size = file.read_to_string(string).unwrap();
                 result.push(from_str(&string));
+
+                println!("Reading file {:?} with size: {}", path, size);
             }
         }
     }
