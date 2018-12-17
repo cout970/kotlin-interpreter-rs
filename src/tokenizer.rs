@@ -489,7 +489,7 @@ fn from_int_chars(radix: u32, digits: &str) -> Literal {
     let mut value: i64 = 0;
 
     for c in chars {
-        value = value * (radix as i64) + to_value(c) as i64;
+        value = value * (radix as i64) + digit_to_value(c) as i64;
     }
 
     if value as u64 & 0xFFFF_FFFF_0000_0000u64 != 0 {
@@ -504,14 +504,14 @@ fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Literal {
     let mut pre_dot_value: f64 = 0.0;
 
     for c in pre_dot_chars {
-        pre_dot_value = pre_dot_value * 10.0 + to_value(c) as f64;
+        pre_dot_value = pre_dot_value * 10.0 + digit_to_value(c) as f64;
     }
 
     let post_dot_chars = post_dot.chars().filter(|c| *c != '_').rev();
     let mut post_dot_value: f64 = 0.0;
 
     for c in post_dot_chars {
-        post_dot_value = (post_dot_value + to_value(c) as f64) / 10.0;
+        post_dot_value = (post_dot_value + digit_to_value(c) as f64) / 10.0;
     }
 
     let mut value = pre_dot_value + post_dot_value;
@@ -524,7 +524,7 @@ fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Literal {
         let mut exp_value: f64 = 0.0;
 
         for c in exp_chars {
-            exp_value = exp_value * 10.0 + to_value(c) as f64;
+            exp_value = exp_value * 10.0 + digit_to_value(c) as f64;
         }
 
         value *= 10.0f64.powf(exp_value * sign);
@@ -533,7 +533,7 @@ fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Literal {
     Literal::Float(value as f32)
 }
 
-fn to_value(c: char) -> u32 {
+fn digit_to_value(c: char) -> u32 {
     match c {
         '0'..='9' => (c as u32) - ('0' as u32),
         'a'..='f' => (c as u32) - ('a' as u32) + 10,
@@ -624,7 +624,6 @@ mod tests {
 
     #[test]
     fn check_float() {
-        // [-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?
         assert_eq!(Token::Literal(Literal::Float(12345.12345)), read_single_token("12345.12345"));
         assert_eq!(Token::Literal(Literal::Float(1.0)), read_single_token("1.0"));
         assert_eq!(Token::Literal(Literal::Float(0.0)), read_single_token("0.0"));
@@ -649,5 +648,13 @@ mod tests {
     fn check_string() {
         assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"abc\""));
         assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"\"\"abc\"\"\""));
+    }
+
+    #[test]
+    #[ignore]
+    fn check_char() {
+        assert_eq!(Token::LitChar('a'), read_single_token("'a'"));
+        assert_eq!(Token::LitChar('a'), read_single_token("\\u61"));
+        assert_eq!(Token::LitChar('a'), read_single_token("\\0141"));
     }
 }
