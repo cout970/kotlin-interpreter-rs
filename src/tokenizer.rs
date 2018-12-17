@@ -4,7 +4,7 @@ use crate::source_code::SOURCE_CODE_PADDING;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
-pub struct TokenStream {
+pub struct CodeCursor {
     source: SourceCode,
     pos: u32,
 }
@@ -69,9 +69,9 @@ pub enum Literal {
     Long(i64),
 }
 
-impl TokenStream {
+impl CodeCursor {
     #[inline]
-    pub fn read_char(&mut self, index: u32) -> char {
+    fn read_char(&mut self, index: u32) -> char {
         self.source[(self.pos + index) as usize] as char
     }
 
@@ -90,13 +90,17 @@ impl TokenStream {
     pub fn next(&mut self) {
         self.pos += 1;
     }
+
+    pub fn code_ref(&mut self) -> SourceCode {
+        self.source.clone()
+    }
 }
 
-pub fn get_token_stream(input: SourceCode) -> TokenStream {
-    TokenStream { source: input, pos: 0 }
+pub fn get_code_cursor(input: SourceCode) -> CodeCursor {
+    CodeCursor { source: input, pos: 0 }
 }
 
-pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), KtError> {
+pub fn read_token(stream: &mut CodeCursor) -> Result<(Span, Token), KtError> {
     trim_spaces(stream);
     trim_comments(stream)?;
     let start = stream.pos;
@@ -106,7 +110,7 @@ pub fn read_token(stream: &mut TokenStream) -> Result<(Span, Token), KtError> {
     Ok(((start, end), token))
 }
 
-pub fn read_all_tokens(stream: &mut TokenStream) -> Result<Vec<(Span, Token)>, KtError> {
+pub fn read_all_tokens(stream: &mut CodeCursor) -> Result<Vec<(Span, Token)>, KtError> {
     let mut tks = vec![];
 
     loop {
@@ -122,7 +126,7 @@ pub fn read_all_tokens(stream: &mut TokenStream) -> Result<Vec<(Span, Token)>, K
     Ok(tks)
 }
 
-fn read_token_aux(stream: &mut TokenStream) -> Result<Token, KtError> {
+fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     if (stream.pos as usize + SOURCE_CODE_PADDING) >= stream.source.len() {
         return Ok(Token::EOF);
     }
@@ -256,7 +260,7 @@ fn read_token_aux(stream: &mut TokenStream) -> Result<Token, KtError> {
         b'a'..=b'z' | b'A'..=b'Z' => read_identifier(stream),
         b'0'..=b'9' => read_number(stream)?,
         _ => return Err(KtError::Tokenizer {
-            code: stream.source.clone(),
+            code: stream.code_ref(),
             span: (stream.pos, stream.pos),
             info: TokenizerError::UnknownCharacter(c0),
         })
@@ -266,7 +270,7 @@ fn read_token_aux(stream: &mut TokenStream) -> Result<Token, KtError> {
     Ok(tk)
 }
 
-fn read_identifier(stream: &mut TokenStream) -> Token {
+fn read_identifier(stream: &mut CodeCursor) -> Token {
     let mut id = String::new();
 
     loop {
@@ -281,7 +285,7 @@ fn read_identifier(stream: &mut TokenStream) -> Token {
     Token::Id(id)
 }
 
-fn read_string(stream: &mut TokenStream) -> Result<Token, KtError> {
+fn read_string(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let triple = stream.read_char(0) == '"' && stream.read_char(1) == '"' && stream.read_char(2) == '"';
     let mut chars = vec![];
     let start = stream.pos;
@@ -302,7 +306,7 @@ fn read_string(stream: &mut TokenStream) -> Result<Token, KtError> {
                 break;
             } else if c0 == 0 {
                 return Err(KtError::Tokenizer {
-                    code: stream.source.clone(),
+                    code: stream.code_ref(),
                     span: (start, stream.pos),
                     info: TokenizerError::ExpectedEndOfString,
                 });
@@ -321,7 +325,7 @@ fn read_string(stream: &mut TokenStream) -> Result<Token, KtError> {
                 break;
             } else if c == b'\n' {
                 return Err(KtError::Tokenizer {
-                    code: stream.source.clone(),
+                    code: stream.code_ref(),
                     span: (start, stream.pos),
                     info: TokenizerError::ExpectedEndOfString,
                 });
@@ -335,7 +339,7 @@ fn read_string(stream: &mut TokenStream) -> Result<Token, KtError> {
     Ok(Token::LitString(String::from_utf8_lossy(&chars).to_string()))
 }
 
-fn read_char(stream: &mut TokenStream) -> Result<Token, KtError> {
+fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let c: char;
     let start = stream.pos;
 
@@ -365,7 +369,7 @@ fn read_char(stream: &mut TokenStream) -> Result<Token, KtError> {
             },
             _ => {
                 return Err(KtError::Tokenizer {
-                    code: stream.source.clone(),
+                    code: stream.code_ref(),
                     span: (start, stream.pos),
                     info: TokenizerError::InvalidScapeChar(c1),
                 });
@@ -377,7 +381,7 @@ fn read_char(stream: &mut TokenStream) -> Result<Token, KtError> {
 
     if stream.read_char(0) != '\'' {
         return Err(KtError::Tokenizer {
-            code: stream.source.clone(),
+            code: stream.code_ref(),
             span: (start, stream.pos),
             info: TokenizerError::ExpectedEndOfChar,
         });
@@ -388,7 +392,7 @@ fn read_char(stream: &mut TokenStream) -> Result<Token, KtError> {
     Ok(Token::LitChar(c))
 }
 
-fn read_number(stream: &mut TokenStream) -> Result<Token, KtError> {
+fn read_number(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let digit = stream.read_char(0);
 
     let tk = match digit {
@@ -398,7 +402,7 @@ fn read_number(stream: &mut TokenStream) -> Result<Token, KtError> {
                 'o' => {
                     // Octal is not supported in the language
                     return Err(KtError::Tokenizer {
-                        code: stream.source.clone(),
+                        code: stream.code_ref(),
                         span: (stream.pos, stream.pos + 1),
                         info: TokenizerError::UnsupportedLiteralPrefix('o'),
                     });
@@ -408,7 +412,7 @@ fn read_number(stream: &mut TokenStream) -> Result<Token, KtError> {
                 '1'..='9' => read_float_or_int(stream),
                 '0' => {
                     return Err(KtError::Tokenizer {
-                        code: stream.source.clone(),
+                        code: stream.code_ref(),
                         span: (stream.pos, stream.pos + 1),
                         info: TokenizerError::UnsupportedLiteralPrefix('0'),
                     });
@@ -424,7 +428,7 @@ fn read_number(stream: &mut TokenStream) -> Result<Token, KtError> {
     Ok(tk)
 }
 
-fn collect_chars<F: FnMut(char) -> bool>(stream: &mut TokenStream, mut pred: F) -> String {
+fn collect_chars<F: FnMut(char) -> bool>(stream: &mut CodeCursor, mut pred: F) -> String {
     let mut res = String::new();
     // TODO add _ but not at start or end
 
@@ -440,17 +444,17 @@ fn collect_chars<F: FnMut(char) -> bool>(stream: &mut TokenStream, mut pred: F) 
     res
 }
 
-fn read_hex(stream: &mut TokenStream) -> Token {
+fn read_hex(stream: &mut CodeCursor) -> Token {
     let res = collect_chars(stream, |c: char| c.is_ascii_hexdigit());
     Token::Literal(from_int_chars(16, &res))
 }
 
-fn read_binary(stream: &mut TokenStream) -> Token {
+fn read_binary(stream: &mut CodeCursor) -> Token {
     let res = collect_chars(stream, |c: char| c == '0' || c == '1');
     Token::Literal(from_int_chars(2, &res))
 }
 
-fn read_float_or_int(stream: &mut TokenStream) -> Token {
+fn read_float_or_int(stream: &mut CodeCursor) -> Token {
     let pre_dot = collect_chars(stream, |c: char| contains(c, '0', '9'));
     let float = stream.read_char(0) == '.' && stream.read_char(1).is_ascii_digit();
 
@@ -546,7 +550,7 @@ fn contains(c: char, start: char, end: char) -> bool {
     c as u32 >= start as u32 && c as u32 <= end as u32
 }
 
-fn trim_spaces(stream: &mut TokenStream) {
+fn trim_spaces(stream: &mut CodeCursor) {
     loop {
         let c = stream.read_u8(0);
 
@@ -558,7 +562,7 @@ fn trim_spaces(stream: &mut TokenStream) {
     }
 }
 
-fn trim_comments(stream: &mut TokenStream) -> Result<(), KtError> {
+fn trim_comments(stream: &mut CodeCursor) -> Result<(), KtError> {
     loop {
         let start = stream.pos;
         let c0 = stream.read_char(0);
@@ -586,7 +590,7 @@ fn trim_comments(stream: &mut TokenStream) -> Result<(), KtError> {
 
                 if c0 == 0 {
                     return Err(KtError::Tokenizer {
-                        code: stream.source.clone(),
+                        code: stream.code_ref(),
                         span: (start, stream.pos),
                         info: TokenizerError::UnclosedComment,
                     });
@@ -610,7 +614,7 @@ fn trim_comments(stream: &mut TokenStream) -> Result<(), KtError> {
 #[cfg(test)]
 mod tests {
     use crate::source_code::from_str;
-    use crate::tokenizer::get_token_stream;
+    use crate::tokenizer::get_code_cursor;
     use crate::tokenizer::read_token;
     use crate::tokenizer::Token;
 
@@ -618,9 +622,34 @@ mod tests {
 
     fn read_single_token(code: &str) -> Token {
         let input = from_str(code);
-        let ref mut s = get_token_stream(input);
+        let ref mut s = get_code_cursor(input);
         read_token(s).unwrap().1
     }
+
+    #[test]
+    fn check_basic_tokens() {
+        let ref mut s = get_code_cursor(from_str("\
+; ( ) { } [ ] < > @ : :: $ . .. , ?: ? ! -> .. + ++ - -- * / % = == === != !== += -= *= /= %= & && | ||
+  "));
+
+        let expected = vec![
+            Token::Semicolon, Token::LeftParen, Token::RightParen, Token::LeftBrace, Token::RightBrace,
+            Token::LeftBracket, Token::RightBracket, Token::LeftAngleBracket, Token::RightAngleBracket,
+            Token::At, Token::Colon, Token::DoubleColon, Token::Dollar, Token::Dot, Token::DoubleDot,
+            Token::Comma, Token::Elvis, Token::QuestionMark, Token::ExclamationMark, Token::LeftArrow,
+            Token::DoubleDot, Token::Plus, Token::DoublePlus, Token::Minus, Token::DoubleMinus,
+            Token::Asterisk, Token::Slash, Token::Percent, Token::Equals, Token::DoubleEquals,
+            Token::TripleEquals, Token::NotEquals, Token::NotDoubleEquals, Token::PlusEquals,
+            Token::Minus, Token::Equals, Token::TimesEquals, Token::DivEquals, Token::ModEquals,
+            Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe, Token::Newline,
+            Token::EOF,
+        ];
+
+        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+
+        assert_eq!(expected, found);
+    }
+
 
     #[test]
     fn check_float() {
