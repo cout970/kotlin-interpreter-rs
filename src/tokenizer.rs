@@ -255,10 +255,10 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             }
             _ => Token::Pipe
         },
-        b'"' => read_string(stream)?,
-        b'\'' => read_char(stream)?,
-        b'a'..=b'z' | b'A'..=b'Z' => read_identifier(stream),
-        b'0'..=b'9' => read_number(stream)?,
+        b'"' => { return Ok(read_string(stream)?); }
+        b'\'' => { return Ok(read_char(stream)?); }
+        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier(stream)); }
+        b'0'..=b'9' => { return Ok(read_number(stream)?); }
         _ => return Err(KtError::Tokenizer {
             code: stream.code_ref(),
             span: (stream.pos, stream.pos),
@@ -366,7 +366,7 @@ fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
             'u' => {
                 // TODO read hex number
                 'A'
-            },
+            }
             _ => {
                 return Err(KtError::Tokenizer {
                     code: stream.code_ref(),

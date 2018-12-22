@@ -8,8 +8,13 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use crate::errors::KtError;
+use crate::parser::get_token_cursor;
+use crate::parser::TokenCursor;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
+use crate::tokenizer::get_code_cursor;
+use crate::tokenizer::read_all_tokens;
 
 pub mod tokenizer;
 pub mod source_code;
@@ -42,6 +47,16 @@ fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
             }
         }
     }
+}
+
+fn get_ast<F, T>(c: &str, func: F) -> T
+    where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    let code = from_str(c);
+    let mut code_cursor = get_code_cursor(code.clone());
+    let tks = read_all_tokens(&mut code_cursor).unwrap();
+//    println!("{:?}", tks);
+    let mut token_cursor = get_token_cursor(code.clone(), tks);
+    token_cursor.complete(&func).unwrap()
 }
 
 #[cfg(test)]
