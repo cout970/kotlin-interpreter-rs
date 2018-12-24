@@ -26,6 +26,7 @@ pub enum TokenizerError {
 pub enum ParserError {
     ExpectedToken { expected: Token, found: Token },
     ExpectedTokenId { found: Token },
+    ExpectedTokenOf { found: Token, options: Vec<Token> },
 }
 
 #[derive(Clone)]
@@ -102,6 +103,13 @@ fn print_parser_error(f: &mut Write, code: &SourceCode, span: Span, error: &Pars
         }
         ParserError::ExpectedTokenId { found } => {
             write!(f, "Expecting identifier but found: {}\n", found)?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        ParserError::ExpectedTokenOf { found, options } => {
+            write!(f, "Found token {} but I was expecting one of:\n", found)?;
+            for x in options {
+                write!(f, " - {}\n", x)?;
+            }
             write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
     }

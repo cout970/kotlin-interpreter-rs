@@ -59,6 +59,15 @@ fn get_ast<F, T>(c: &str, func: F) -> T
     token_cursor.complete(&func).unwrap()
 }
 
+fn create_vec<T>(first: T, rest: Vec<T>) -> Vec<T> {
+    let mut new = Vec::new();
+    new.push(first);
+    for x in rest.into_iter() {
+        new.push(x);
+    }
+    new
+}
+
 #[cfg(test)]
 mod tests {
     use crate::tokenizer::get_code_cursor;
@@ -68,6 +77,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore]
     fn get_code() {
         let ref mut codes: Vec<SourceCode> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);

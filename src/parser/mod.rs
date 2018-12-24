@@ -38,6 +38,12 @@ impl TokenCursor {
         })
     }
 
+    pub fn make_error_expected_of<T>(&mut self, options: Vec<Token>) -> Result<T, KtError> {
+        let span = self.read_token_span(0);
+        let found = self.read_token(0);
+        return self.make_error(span, ParserError::ExpectedTokenOf { found, options });
+    }
+
     fn save(&self) -> u32 {
         self.pos
     }
@@ -95,9 +101,28 @@ impl TokenCursor {
         accum.push(first);
 
         loop {
+            let save = self.save();
             if !self.optional_expect(tk.clone()) {
                 break;
             }
+            let res = match func(self) {
+                Ok(pair) => pair,
+                Err(_) => {
+                    self.restore(save);
+                    break;
+                }
+            };
+            accum.push(res);
+        }
+
+        Ok(accum)
+    }
+
+    pub fn optional_separated_by<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, KtError>
+        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+        let mut accum: Vec<T> = vec![];
+
+        loop {
             let save = self.save();
             let res = match func(self) {
                 Ok(pair) => pair,
@@ -107,6 +132,9 @@ impl TokenCursor {
                 }
             };
             accum.push(res);
+            if !self.optional_expect(tk.clone()) {
+                break;
+            }
         }
 
         Ok(accum)
@@ -142,6 +170,19 @@ impl TokenCursor {
         if tk == self.read_token(0) {
             self.next();
             true
+        } else {
+            false
+        }
+    }
+
+    pub fn optional_expect_keyword(&mut self, keyword: &str) -> bool {
+        if let Token::Id(name) = self.read_token(0) {
+            if keyword == &name {
+                self.next();
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
