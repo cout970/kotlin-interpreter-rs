@@ -18,7 +18,8 @@ pub enum TokenizerError {
     ExpectedEndOfString,
     ExpectedEndOfChar,
     UnclosedComment,
-    InvalidScapeChar(char),
+    InvalidEscapeChar(char),
+    ExpectedEndOfEscapedIdentifier,
 }
 
 #[derive(Debug, Clone)]
@@ -79,8 +80,12 @@ fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &T
             write!(f, "Found unclosed comment\n")?;
             write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
-        TokenizerError::InvalidScapeChar(c) => {
-            write!(f, "Found invalid scape character: '{}' ({})\n", *c, *c as u32)?;
+        TokenizerError::InvalidEscapeChar(c) => {
+            write!(f, "Found invalid escape character: '{}' ({})\n", *c, *c as u32)?;
+            write!(f, "{}", print_code_location(&to_str(code), span))?;
+        }
+        TokenizerError::ExpectedEndOfEscapedIdentifier => {
+            write!(f, "I was expecting a ` to end the escaped identifier: \n")?;
             write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
     }

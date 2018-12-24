@@ -63,14 +63,15 @@ fn get_ast<F, T>(c: &str, func: F) -> T
 mod tests {
     use crate::tokenizer::get_code_cursor;
     use crate::tokenizer::read_all_tokens;
+    use pretty_assertions::assert_eq;
 
     use super::*;
 
     #[test]
     fn get_code() {
         let ref mut codes: Vec<SourceCode> = vec![];
-        get_all_source_files("/Data/Dev/Kotlin/ModelLoader/src/".as_ref(), codes);
-        assert_eq!(codes.len(), 47);
+        get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);
+        assert_eq!(codes.len(), 264);
 
         for code in codes {
             let ref mut s = get_code_cursor(code.clone());

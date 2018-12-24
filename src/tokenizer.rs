@@ -183,6 +183,16 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
                     _ => Token::NotEquals
                 }
             }
+//            b'i' => {
+//                match c2 {
+//                    b'n' => {
+//                        stream.next();
+//                        stream.next();
+//                        Token::NotIn
+//                    }
+//                    _ => Token::ExclamationMark
+//                }
+//            }
             _ => Token::ExclamationMark
         },
         b'+' => match c1 {
@@ -258,6 +268,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         b'"' => { return Ok(read_string(stream)?); }
         b'\'' => { return Ok(read_char(stream)?); }
         b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier(stream)); }
+        b'`' => { return read_escaped_identifier(stream); }
         b'0'..=b'9' => { return Ok(read_number(stream)?); }
         _ => return Err(KtError::Tokenizer {
             code: stream.code_ref(),
@@ -267,6 +278,24 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     };
 
     stream.next();
+    Ok(tk)
+}
+
+fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError>{
+    let start = stream.pos;
+    assert_eq!(stream.read_u8(0), b'`');
+    stream.next();
+    let tk = read_identifier(stream);
+
+    if stream.read_u8(0) != b'`' {
+        return Err(KtError::Tokenizer {
+            code: stream.code_ref(),
+            span: (start, stream.pos),
+            info: TokenizerError::ExpectedEndOfEscapedIdentifier,
+        });
+    }
+    stream.next();
+
     Ok(tk)
 }
 
@@ -285,6 +314,7 @@ fn read_identifier(stream: &mut CodeCursor) -> Token {
     Token::Id(id)
 }
 
+// TODO add string templates
 fn read_string(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let triple = stream.read_char(0) == '"' && stream.read_char(1) == '"' && stream.read_char(2) == '"';
     let mut chars = vec![];
@@ -371,7 +401,7 @@ fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
                 return Err(KtError::Tokenizer {
                     code: stream.code_ref(),
                     span: (start, stream.pos),
-                    info: TokenizerError::InvalidScapeChar(c1),
+                    info: TokenizerError::InvalidEscapeChar(c1),
                 });
             }
         };
