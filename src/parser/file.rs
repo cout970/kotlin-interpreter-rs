@@ -17,12 +17,14 @@ use crate::parser::ast::PackageHeader;
 use crate::parser::ast::Parameter;
 use crate::parser::ast::ParameterMutability;
 use crate::parser::ast::Preamble;
+use crate::parser::ast::Property;
 use crate::parser::ast::SimpleUserType;
 use crate::parser::ast::TopLevelObject;
 use crate::parser::ast::Type;
 use crate::parser::ast::TypeConstraint;
 use crate::parser::ast::TypeParameter;
 use crate::parser::ast::TypeReference;
+use crate::parser::ast::VariableDeclarationEntry;
 use crate::parser::TokenCursor;
 use crate::tokenizer::Token;
 
@@ -40,6 +42,9 @@ fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError>
             s.next();
             TopLevelObject::Function(read_function(s, modifiers)?)
         }
+        Token::Val | Token::Var => {
+            TopLevelObject::Property(read_property(s, modifiers)?)
+        }
         _ => {
             return s.make_error_expected_of(vec![
                 Token::Id(String::from("fun")),
@@ -50,6 +55,70 @@ fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError>
     Ok(obj)
 }
 
+fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Property, KtError> {
+//    : modifiers ("val" | "var")
+//        typeParameters?
+//        (type ".")?
+//        (multipleVariableDeclarations | variableDeclarationEntry)
+//        typeConstraints
+//        ("by" | "=" expression SEMI?)?
+//        (getter? setter? | setter? getter?) SEMI?
+//    ;
+
+    let mutable = s.optional_expect(Token::Var);
+    if !mutable { s.expect(Token::Val)?; }
+
+    let type_parameters = s.optional(&read_type_parameters).unwrap_or_default();
+
+    let save = s.save();
+    let receiver = match s.optional(&read_receiver_type) {
+        Some(ty) => {
+            if s.optional_expect(Token::Dot) {
+                Some(ty)
+            } else {
+                s.restore(save);
+                None
+            }
+        }
+        None => None
+    };
+
+    let declarations = if let Token::LeftParen = s.read_token(0) {
+        read_multiple_variable_declarations(s)?
+    } else {
+        vec![read_variable_declaration(s)?]
+    };
+
+    let type_constraints = read_type_constraints(s)?;
+
+    Ok(Property {
+        modifiers,
+        type_parameters,
+        receiver,
+        declarations,
+        type_constraints,
+    })
+}
+
+fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
+    let name = s.expect_id()?;
+    let declared_type = if s.optional_expect(Token::Colon) {
+        Some(read_type(s)?)
+    } else {
+        None
+    };
+
+    Ok(VariableDeclarationEntry { name, declared_type })
+}
+
+fn read_multiple_variable_declarations(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
+    s.expect(Token::LeftParen)?;
+    let decls = s.separated_by(Token::Comma, &read_variable_declaration)?;
+    s.expect(Token::RightParen)?;
+    Ok(decls)
+}
+
+fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Function, KtError> {
 //   : modifiers "fun"
 //      typeParameters?
 //      (type ".")?
@@ -58,11 +127,10 @@ fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError>
 //      typeConstraints
 //      functionBody?
 //  ;
-fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Function, KtError> {
     let type_parameters = s.optional(&read_type_parameters).unwrap_or(vec![]);
 
     let save = s.save();
-    let receiver = match s.optional(&read_type) {
+    let receiver = match s.optional(&read_receiver_type) {
         Some(ty) => {
             if s.optional_expect(Token::Dot) {
                 Some(ty)
@@ -131,7 +199,14 @@ fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
 
 fn read_type(s: &mut TokenCursor) -> Result<Type, KtError> {
     let modifiers = s.many0(&read_annotation)?;
-    let reference = read_type_reference(s)?;
+    let reference = read_type_reference(s, false)?;
+
+    Ok(Type { annotations: modifiers, reference })
+}
+
+fn read_receiver_type(s: &mut TokenCursor) -> Result<Type, KtError> {
+    let modifiers = s.many0(&read_annotation)?;
+    let reference = read_type_reference(s, true)?;
 
     Ok(Type { annotations: modifiers, reference })
 }
@@ -142,7 +217,7 @@ fn read_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
     Ok(Annotation { names })
 }
 
-fn read_type_reference(s: &mut TokenCursor) -> Result<Arc<TypeReference>, KtError> {
+fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeReference>, KtError> {
     let ty = match s.read_token(0) {
         // Options
         //  (Int)           => Int
@@ -155,7 +230,7 @@ fn read_type_reference(s: &mut TokenCursor) -> Result<Arc<TypeReference>, KtErro
             if s.optional_expect(Token::RightParen) {
                 // ()
                 s.expect(Token::LeftArrow)?;
-                let return_type = read_type_reference(s)?;
+                let return_type = read_type_reference(s, false)?;
 
                 Arc::new(TypeReference::Function(FunctionType { receiver: None, parameters: vec![], return_type }))
             } else {
@@ -165,7 +240,7 @@ fn read_type_reference(s: &mut TokenCursor) -> Result<Arc<TypeReference>, KtErro
                     // (Int)
                     if s.optional_expect(Token::LeftArrow) {
                         // (Int) -> // Expecting the return type
-                        let return_type = read_type_reference(s)?;
+                        let return_type = read_type_reference(s, receiver)?;
 
                         Arc::new(TypeReference::Function(FunctionType { receiver: None, parameters: vec![first], return_type }))
                     } else {
@@ -178,7 +253,7 @@ fn read_type_reference(s: &mut TokenCursor) -> Result<Arc<TypeReference>, KtErro
                     let rest = s.separated_by(Token::Comma, &read_type)?;
                     s.expect(Token::RightParen)?;
                     s.expect(Token::LeftArrow)?;
-                    let return_type = read_type_reference(s)?;
+                    let return_type = read_type_reference(s, receiver)?;
 
                     Arc::new(TypeReference::Function(FunctionType { receiver: None, parameters: create_vec(first, rest), return_type }))
                 }
@@ -186,7 +261,31 @@ fn read_type_reference(s: &mut TokenCursor) -> Result<Arc<TypeReference>, KtErro
         }
         // java.lang.Int
         Token::Id(_) => {
-            let ty = s.separated_by(Token::Dot, &read_simple_user_type)?;
+            let ty = if !receiver {
+                s.separated_by(Token::Dot, &read_simple_user_type)?
+            } else {
+                let mut sum = vec![];
+                sum.push(read_simple_user_type(s)?);
+
+                loop {
+                    if s.read_token(0) != Token::Dot {
+                        break;
+                    }
+
+                    // If we are in  the case `val java.lang.Integer.neg: Int get() = -this`
+                    // we need to stop before the name 'neg'
+                    if let Token::Id(_) = s.read_token(1) {
+                        if s.read_token(2) != Token::Dot {
+                            break;
+                        }
+                    }
+
+                    s.next();
+                    sum.push(read_simple_user_type(s)?);
+                }
+                sum
+            };
+
             Arc::new(TypeReference::UserType(ty))
         }
         _ => {
@@ -346,7 +445,7 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
                 }
             }
             Token::In => Ok(Modifier { name: String::from("in") }),
-            _ =>{
+            _ => {
                 let tk = s.read_token(0);
                 s.next();
                 s.make_error((start, s.pos), ParserError::ExpectedTokenId {
@@ -426,9 +525,17 @@ mod tests {
         println!("{:?}", get_ast("fun <T> main(c: T): T", read_top_level_object));
         println!("{:?}", get_ast("fun <T> main<T: Int>(c: T): T", read_top_level_object));
         println!("{:?}", get_ast("fun <T> main(c: List<T>): T", read_top_level_object));
+        println!("{:?}", get_ast("fun <T> java.lang.Integer.main(c: List<T>): T", read_top_level_object));
 //        println!("{:?}", get_ast("fun <T> main(c: Int = 0): T", read_top_level_object));
     }
 
-
+    #[test]
+    fn test_property() {
+        println!("{:?}", get_ast("val a", read_top_level_object));
+        println!("{:?}", get_ast("var a", read_top_level_object));
+        println!("{:?}", get_ast("val (a, b)", read_top_level_object));
+        println!("{:?}", get_ast("val a: Int", read_top_level_object));
+        println!("{:?}", get_ast("val Int.a: Int", read_top_level_object));
+    }
 }
 

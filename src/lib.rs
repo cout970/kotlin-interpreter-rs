@@ -15,14 +15,21 @@ use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 use crate::tokenizer::get_code_cursor;
 use crate::tokenizer::read_all_tokens;
+use std::io::stdout;
+use std::io::Write;
 
 pub mod tokenizer;
 pub mod source_code;
 pub mod errors;
 pub mod parser;
 
-// https://kotlinlang.org/docs/reference/grammar.html
-// https://play.kotlinlang.org
+// Lang references:
+// - https://kotlinlang.org/docs/kotlin-docs.pdf
+// - https://kotlinlang.org/docs/reference/grammar.html
+// - https://github.com/JetBrains/kotlin/blob/686cfa6fd29b8e096ea04a2b96e2dc08adced512/compiler/psi/src/org/jetbrains/kotlin/parsing/KotlinParsing.java
+// - https://play.kotlinlang.org
+
+
 fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
     let file = File::open(path);
     let mut file = if let Ok(f) = file { f } else { return; };
@@ -59,6 +66,7 @@ fn get_ast<F, T>(c: &str, func: F) -> T
 //        print!("{} ", x);
 //    }
 //    println!();
+//    stdout().flush();
 
     let mut token_cursor = get_token_cursor(code.clone(), tks);
     token_cursor.complete(&func).unwrap()

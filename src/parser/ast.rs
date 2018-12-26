@@ -60,8 +60,23 @@ pub enum TopLevelObject {
     Class(Class),
     Object,
     Function(Function),
-    Property,
+    Property(Property),
     TypeAlias,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Property {
+    pub modifiers: Vec<Modifier>,
+    pub type_parameters: Vec<TypeParameter>,
+    pub receiver: Option<Type>,
+    pub declarations: Vec<VariableDeclarationEntry>,
+    pub type_constraints: Vec<TypeConstraint>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct VariableDeclarationEntry {
+    pub name: String,
+    pub declared_type: Option<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
