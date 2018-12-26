@@ -77,7 +77,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     let type_parameters2 = s.optional(&read_type_parameters).unwrap_or(vec![]);
     let value_parameters = read_value_parameters(s)?;
 
-    let return_type = if s.optional_expect(Token::Semicolon) {
+    let return_type = if s.optional_expect(Token::Colon) {
         read_type(s)?
     } else {
         Type {
@@ -107,7 +107,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 
 fn read_type_parameters(s: &mut TokenCursor) -> Result<Vec<TypeParameter>, KtError> {
     s.expect(Token::LeftAngleBracket)?;
-    let params = s.optional_separated_by(Token::Comma, &read_type_parameter)?;
+    let params = s.separated_by(Token::Comma, &read_type_parameter)?;
     s.expect(Token::RightAngleBracket)?;
     Ok(params)
 }
@@ -117,7 +117,7 @@ fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
     let name = s.expect_id()?;
     let mut user_type = None;
 
-    if s.optional_expect(Token::Semicolon) {
+    if s.optional_expect(Token::Colon) {
         user_type = Some(read_type(s)?);
     }
 
@@ -259,7 +259,7 @@ fn read_type_constraint(s: &mut TokenCursor) -> Result<TypeConstraint, KtError> 
 
 fn read_value_parameters(s: &mut TokenCursor) -> Result<Vec<FunctionParameter>, KtError> {
     s.expect(Token::LeftParen)?;
-    let params = s.separated_by(Token::Comma, &read_function_parameter)?;
+    let params = s.optional_separated_by(Token::Comma, &read_function_parameter)?;
     s.expect(Token::RightParen)?;
 
     Ok(params)
@@ -276,7 +276,9 @@ fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtE
     }
 
     let name = s.expect_id()?;
+    s.expect(Token::Colon)?;
     let ty = read_type(s)?;
+
     Ok(FunctionParameter { modifiers, mutability, name, ty })
 }
 
@@ -412,9 +414,12 @@ mod tests {
     fn test_fun() {
         println!("{:?}", get_ast("fun main()", read_top_level_object));
         println!("{:?}", get_ast("fun main(): Int", read_top_level_object));
-        println!("{:?}", get_ast("fun main(Int): Int", read_top_level_object));
-        println!("{:?}", get_ast("fun main(Int, Int): Int", read_top_level_object));
-        println!("{:?}", get_ast("fun <T> main(T): T", read_top_level_object));
+        println!("{:?}", get_ast("fun main(a: Int): Int", read_top_level_object));
+        println!("{:?}", get_ast("fun main(a: Int, b: Int): Int", read_top_level_object));
+        println!("{:?}", get_ast("fun <T> main(c: T): T", read_top_level_object));
+        println!("{:?}", get_ast("fun <T> main<T: Int>(c: T): T", read_top_level_object));
+        println!("{:?}", get_ast("fun <T> main(c: List<T>): T", read_top_level_object));
+//        println!("{:?}", get_ast("fun <T> main(c: Int = 0): T", read_top_level_object));
     }
 }
 

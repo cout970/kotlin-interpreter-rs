@@ -146,7 +146,8 @@ impl TokenCursor {
         match func(self) {
             Ok(t) => Some(t),
             Err(e) => {
-                println!("{}", e);
+
+//                println!("{}", e);
                 self.restore(save);
                 None
             }
@@ -160,6 +161,7 @@ impl TokenCursor {
         } else {
             let span = self.read_token_span(0);
             let found = self.read_token(0);
+
             return self.make_error(
                 span, ParserError::ExpectedToken { expected: tk, found },
             );
@@ -218,6 +220,7 @@ impl TokenCursor {
         } else {
             let span = self.read_token_span(0);
             let found = self.read_token(0);
+
             return self.make_error(
                 span, ParserError::ExpectedTokenId { found },
             );

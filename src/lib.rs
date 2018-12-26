@@ -54,7 +54,12 @@ fn get_ast<F, T>(c: &str, func: F) -> T
     let code = from_str(c);
     let mut code_cursor = get_code_cursor(code.clone());
     let tks = read_all_tokens(&mut code_cursor).unwrap();
-//    println!("{:?}", tks);
+
+//    for (_, x) in &tks {
+//        print!("{} ", x);
+//    }
+//    println!();
+
     let mut token_cursor = get_token_cursor(code.clone(), tks);
     token_cursor.complete(&func).unwrap()
 }
