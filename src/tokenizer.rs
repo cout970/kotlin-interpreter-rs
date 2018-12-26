@@ -15,6 +15,7 @@ pub enum Token {
     Literal(Literal),
     LitChar(char),
     LitString(String),
+    // Signs
     Semicolon,
     Newline,
     LeftParen,
@@ -58,6 +59,38 @@ pub enum Token {
     Pipe,
     DoublePipe,
     Underscore,
+    // Keywords
+    As,
+    AsQuestionMark,
+    Break,
+    Class,
+    Continue,
+    Do,
+    Else,
+    False,
+    For,
+    Fun,
+    If,
+    In,
+    NotIn,
+    Is,
+    NotIs,
+    Interface,
+    Null,
+    Object,
+    Package,
+    Return,
+    Super,
+    This,
+    Throw,
+    True,
+    Try,
+    TypeAlias,
+    Val,
+    Var,
+    When,
+    While,
+    // End of file
     EOF,
 }
 
@@ -183,16 +216,22 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
                     _ => Token::NotEquals
                 }
             }
-//            b'i' => {
-//                match c2 {
-//                    b'n' => {
-//                        stream.next();
-//                        stream.next();
-//                        Token::NotIn
-//                    }
-//                    _ => Token::ExclamationMark
-//                }
-//            }
+            b'i' => {
+                let c2 = stream.read_u8(2);
+                match c2 {
+                    b'n' => {
+                        stream.next();
+                        stream.next();
+                        Token::NotIn
+                    }
+                    b's' => {
+                        stream.next();
+                        stream.next();
+                        Token::NotIs
+                    }
+                    _ => Token::ExclamationMark
+                }
+            }
             _ => Token::ExclamationMark
         },
         b'+' => match c1 {
@@ -267,7 +306,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         },
         b'"' => { return Ok(read_string(stream)?); }
         b'\'' => { return Ok(read_char(stream)?); }
-        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier(stream)); }
+        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier(stream, true)); }
         b'`' => { return read_escaped_identifier(stream); }
         b'0'..=b'9' => { return Ok(read_number(stream)?); }
         _ => return Err(KtError::Tokenizer {
@@ -281,11 +320,11 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     Ok(tk)
 }
 
-fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError>{
+fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let start = stream.pos;
     assert_eq!(stream.read_u8(0), b'`');
     stream.next();
-    let tk = read_identifier(stream);
+    let tk = read_identifier(stream, false);
 
     if stream.read_u8(0) != b'`' {
         return Err(KtError::Tokenizer {
@@ -299,7 +338,7 @@ fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError>{
     Ok(tk)
 }
 
-fn read_identifier(stream: &mut CodeCursor) -> Token {
+fn read_identifier(stream: &mut CodeCursor, allow_keywords: bool) -> Token {
     let mut id = String::new();
 
     loop {
@@ -311,7 +350,48 @@ fn read_identifier(stream: &mut CodeCursor) -> Token {
         stream.next();
     }
 
-    Token::Id(id)
+    if allow_keywords {
+        match &id[..] {
+            "as" => {
+                if stream.read_u8(0) == b'?' {
+                    stream.next();
+                    Token::AsQuestionMark
+                } else {
+                    Token::As
+                }
+            }
+            "as?" => Token::AsQuestionMark,
+            "break" => Token::Break,
+            "class" => Token::Class,
+            "continue" => Token::Continue,
+            "do" => Token::Do,
+            "else" => Token::Else,
+            "false" => Token::False,
+            "for" => Token::For,
+            "fun" => Token::Fun,
+            "if" => Token::If,
+            "in" => Token::In,
+            "interface" => Token::Interface,
+            "is" => Token::Is,
+            "null" => Token::Null,
+            "object" => Token::Object,
+            "package" => Token::Package,
+            "return" => Token::Return,
+            "super" => Token::Super,
+            "this" => Token::This,
+            "throw" => Token::Throw,
+            "true" => Token::True,
+            "try" => Token::Try,
+            "typealias" => Token::TypeAlias,
+            "val" => Token::Val,
+            "var" => Token::Var,
+            "when" => Token::When,
+            "while" => Token::While,
+            _ => Token::Id(id)
+        }
+    } else {
+        Token::Id(id)
+    }
 }
 
 // TODO add string templates

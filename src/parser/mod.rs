@@ -145,7 +145,7 @@ impl TokenCursor {
         let save = self.save();
         match func(self) {
             Ok(t) => Some(t),
-            Err(e) => {
+            Err(_e) => {
 
 //                println!("{}", e);
                 self.restore(save);

@@ -1,29 +1,30 @@
+use std::sync::Arc;
+
+use crate::create_vec;
 use crate::errors::KtError;
 use crate::errors::ParserError;
 use crate::parser::ast::Annotation;
+use crate::parser::ast::CallSiteTypeParams;
 use crate::parser::ast::FileAnnotation;
-use crate::parser::ast::Modifier;
-use crate::parser::ast::PackageHeader;
-use crate::parser::ast::Preamble;
-use crate::parser::TokenCursor;
-use crate::tokenizer::Token;
+use crate::parser::ast::Function;
+use crate::parser::ast::FunctionBody;
+use crate::parser::ast::FunctionParameter;
+use crate::parser::ast::FunctionType;
 use crate::parser::ast::Import;
 use crate::parser::ast::KotlinFile;
-use crate::parser::ast::TopLevelObject;
-use crate::parser::ast::Function;
-use crate::parser::ast::TypeParameter;
-use crate::parser::ast::Type;
-use crate::parser::ast::FunctionBody;
-use crate::parser::ast::TypeConstraint;
+use crate::parser::ast::Modifier;
+use crate::parser::ast::PackageHeader;
 use crate::parser::ast::Parameter;
-use std::sync::Arc;
-use crate::parser::ast::TypeReference;
-use crate::parser::ast::SimpleUserType;
-use crate::parser::ast::FunctionType;
-use crate::create_vec;
-use crate::parser::ast::CallSiteTypeParams;
-use crate::parser::ast::FunctionParameter;
 use crate::parser::ast::ParameterMutability;
+use crate::parser::ast::Preamble;
+use crate::parser::ast::SimpleUserType;
+use crate::parser::ast::TopLevelObject;
+use crate::parser::ast::Type;
+use crate::parser::ast::TypeConstraint;
+use crate::parser::ast::TypeParameter;
+use crate::parser::ast::TypeReference;
+use crate::parser::TokenCursor;
+use crate::tokenizer::Token;
 
 pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
     let preamble = read_preamble(s)?;
@@ -35,7 +36,7 @@ fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError>
     let modifiers = read_modifiers(s)?;
 
     let obj = match s.read_token(0) {
-        Token::Id(name) => { // name == "fun"
+        Token::Fun => {
             s.next();
             TopLevelObject::Function(read_function(s, modifiers)?)
         }
@@ -235,7 +236,7 @@ fn read_call_site_type_params(s: &mut TokenCursor) -> Result<CallSiteTypeParams,
     }
 }
 
-fn read_function_body(s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
+fn read_function_body(_s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
     unimplemented!()
 }
 
@@ -269,9 +270,9 @@ fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtE
     let modifiers = read_modifiers(s)?;
     let mut mutability = ParameterMutability::Default;
 
-    if s.optional_expect_keyword("val") {
+    if s.optional_expect(Token::Val) {
         mutability = ParameterMutability::Val;
-    } else if s.optional_expect_keyword("var") {
+    } else if s.optional_expect(Token::Var) {
         mutability = ParameterMutability::Var;
     }
 
@@ -302,8 +303,8 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
             s.expect(Token::Asterisk)?;
             path.push(String::from("*"))
         }
-        Token::Id(_) => {
-            s.expect_keyword("as")?;
+        Token::As => {
+            s.next();
             alias = Some(s.expect_id()?);
         }
         _ => {}
@@ -315,7 +316,7 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
 
 fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
     let modifiers = read_modifiers(s)?;
-    s.expect_keyword("package")?;
+    s.expect(Token::Package)?;
     let path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     s.optional_expect(Token::Semicolon);
 
@@ -324,9 +325,10 @@ fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
 
 fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
     s.many0(&|s| {
-        let res = s.expect_id();
-        match res {
-            Ok(name) => {
+        let start = s.pos;
+        match s.read_token(0) {
+            Token::Id(name) => {
+                s.next();
                 match name.as_str() {
                     /*"abstract" |*/ /*"final" |*/ "enum" | /*"open" |*/ "annotation" | "sealed" | "data" | // classModifier
                     "override" | "open" | "final" | "abstract" | "lateinit" | // memberModifier
@@ -337,15 +339,20 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
                     "tailrec" | "operator" | "infix" | "inline" | "external" | "suspend" | // functionModifier
                     "const" | // propertyModifier
                     "expect" | "actual" // multiPlatformModifier
-                    => {
-                            Ok(Modifier { name })
-                        }
-                    _ => s.make_error((0, 0), ParserError::ExpectedTokenId {
+                    => Ok(Modifier { name }),
+                    _ => s.make_error((start, s.pos), ParserError::ExpectedTokenId {
                         found: Token::Id(name.to_owned())
                     })
                 }
             }
-            Err(e) => Err(e)
+            Token::In => Ok(Modifier { name: String::from("in") }),
+            _ =>{
+                let tk = s.read_token(0);
+                s.next();
+                s.make_error((start, s.pos), ParserError::ExpectedTokenId {
+                    found: tk
+                })
+            }
         }
     })
 }
@@ -421,5 +428,7 @@ mod tests {
         println!("{:?}", get_ast("fun <T> main(c: List<T>): T", read_top_level_object));
 //        println!("{:?}", get_ast("fun <T> main(c: Int = 0): T", read_top_level_object));
     }
+
+
 }
 

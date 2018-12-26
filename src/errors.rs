@@ -167,6 +167,36 @@ impl Display for Token {
             Token::Pipe => { write!(f, "|")?; }
             Token::DoublePipe => { write!(f, "||")?; }
             Token::Underscore => { write!(f, "_")?; }
+            Token::As => { write!(f, "as")?; }
+            Token::AsQuestionMark => { write!(f, "as?")?; }
+            Token::Break => { write!(f, "break")?; }
+            Token::Class => { write!(f, "class")?; }
+            Token::Continue => { write!(f, "continue")?; }
+            Token::Do => { write!(f, "do")?; }
+            Token::Else => { write!(f, "else")?; }
+            Token::False => { write!(f, "false")?; }
+            Token::For => { write!(f, "for")?; }
+            Token::Fun => { write!(f, "fun")?; }
+            Token::If => { write!(f, "if")?; }
+            Token::In => { write!(f, "in")?; }
+            Token::NotIn => { write!(f, "!in")?; }
+            Token::Is => { write!(f, "is")?; }
+            Token::NotIs => { write!(f, "!is")?; }
+            Token::Interface => { write!(f, "interface")?; }
+            Token::Null => { write!(f, "null")?; }
+            Token::Object => { write!(f, "object")?; }
+            Token::Package => { write!(f, "package")?; }
+            Token::Return => { write!(f, "return")?; }
+            Token::Super => { write!(f, "super")?; }
+            Token::This => { write!(f, "this")?; }
+            Token::Throw => { write!(f, "throw")?; }
+            Token::True => { write!(f, "true")?; }
+            Token::Try => { write!(f, "try")?; }
+            Token::TypeAlias => { write!(f, "typealias")?; }
+            Token::Val => { write!(f, "val")?; }
+            Token::Var => { write!(f, "var")?; }
+            Token::When => { write!(f, "when")?; }
+            Token::While => { write!(f, "while")?; }
             Token::EOF => { write!(f, "EOF")?; }
         }
         Ok(())
