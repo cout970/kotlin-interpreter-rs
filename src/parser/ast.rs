@@ -100,7 +100,11 @@ pub struct PropertySetter {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum Expr{
+pub enum Expr {
+    Chain{
+        operands: Vec<Expr>,
+        operators: Vec<String>
+    },
 
 }
 

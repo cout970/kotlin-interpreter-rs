@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::create_vec;
 use crate::errors::KtError;
 use crate::errors::ParserError;
+use crate::map;
 use crate::parser::ast::Annotation;
 use crate::parser::ast::CallSiteTypeParams;
 use crate::parser::ast::Expr;
@@ -215,9 +216,97 @@ fn read_multiple_variable_declarations(s: &mut TokenCursor) -> Result<Vec<Variab
     Ok(decls)
 }
 
+// BEGIN Expr
 fn read_expresion(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    unimplemented!()
+    let (dis, ops) = s.chain(&read_expr_assignment_operator, &read_expr_disjunction)?;
+    Ok(Expr::Chain { operands: dis, operators: ops })
 }
+
+fn read_expr_assignment_operator(s: &mut TokenCursor) -> Result<String, KtError> {
+    let res = match s.read_token(0) {
+        Token::Equals => "=",
+        Token::PlusEquals => "+=",
+        Token::MinusEquals => "-=",
+        Token::TimesEquals => "*=",
+        Token::DivEquals => "/=",
+        Token::ModEquals => "%=",
+        _ => {
+            return s.make_error_expected_of(vec![Token::Equals, Token::PlusEquals, Token::MinusEquals, Token::TimesEquals, Token::DivEquals, Token::ModEquals]);
+        }
+    };
+
+    s.next();
+    Ok(String::from(res))
+}
+
+fn read_expr_comparison_operator(s: &mut TokenCursor) -> Result<String, KtError> {
+    let res = match s.read_token(0) {
+        Token::LeftAngleBracket => {
+            if s.read_token(1) == Token::Equals {
+                s.next();
+                "<="
+            } else {
+                "<"
+            }
+        }
+        Token::RightAngleBracket => {
+            if s.read_token(1) == Token::Equals {
+                s.next();
+                ">="
+            } else {
+                ">"
+            }
+        }
+        _ => {
+            return s.make_error_expected_of(vec![Token::LeftAngleBracket, Token::RightAngleBracket]);
+        }
+    };
+
+    s.next();
+    Ok(String::from(res))
+}
+
+fn read_expr_equality_operator(s: &mut TokenCursor) -> Result<String, KtError> {
+    let res = match s.read_token(0) {
+        Token::DoubleEquals => "==",
+        Token::NotEquals => "!=",
+        _ => {
+            return s.make_error_expected_of(vec![Token::DoubleEquals, Token::NotEquals]);
+        }
+    };
+
+    s.next();
+    s.next();
+    Ok(String::from(res))
+}
+
+
+fn read_expr_disjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleAmpersand), &read_expr_conjunction)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) })
+}
+
+fn read_expr_conjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::DoublePipe), &read_expr_equality_comparison)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+}
+
+fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_equality_operator, &read_expr_comparison)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+}
+
+fn read_expr_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_comparison_operator, &read_name_infix)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+}
+
+fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    unimplemented!()
+//    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+}
+
+// END Expr
 
 fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Function, KtError> {
 //   : modifiers "fun"
@@ -493,8 +582,8 @@ fn read_preamble(s: &mut TokenCursor) -> Result<Preamble, KtError> {
     })
 }
 
-// "import" SimpleName{"."} ("." "*" | "as" SimpleName)? SEMI?
 fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
+    // "import" SimpleName{"."} ("." "*" | "as" SimpleName)? SEMI?
     s.expect_keyword("import")?;
     let mut path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     let mut alias = None;

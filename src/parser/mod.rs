@@ -154,6 +154,24 @@ impl TokenCursor {
         }
     }
 
+    pub fn chain<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), KtError>
+        where F1: Fn(&mut TokenCursor) -> Result<OR, KtError>,
+              F2: Fn(&mut TokenCursor) -> Result<OS, KtError>,
+    {
+        let mut accum_operands: Vec<OS> = vec![];
+        let mut accum_operators: Vec<OR> = vec![];
+
+        accum_operands.push(operands(self)?);
+
+        while let Some(operator) = self.optional(&operators) {
+            accum_operators.push(operator);
+            accum_operands.push(operands(self)?);
+        }
+
+        Ok((accum_operands, accum_operators))
+    }
+
+
     pub fn expect(&mut self, tk: Token) -> Result<(), KtError> {
         if tk == self.read_token(0) {
             self.next();

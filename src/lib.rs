@@ -6,6 +6,8 @@
 use std::fs;
 use std::fs::File;
 use std::io::Read;
+//use std::io::stdout;
+//use std::io::Write;
 use std::path::Path;
 
 use crate::errors::KtError;
@@ -15,8 +17,6 @@ use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 use crate::tokenizer::get_code_cursor;
 use crate::tokenizer::read_all_tokens;
-use std::io::stdout;
-use std::io::Write;
 
 pub mod tokenizer;
 pub mod source_code;
@@ -81,11 +81,17 @@ fn create_vec<T>(first: T, rest: Vec<T>) -> Vec<T> {
     new
 }
 
+#[inline]
+fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
+    src.into_iter().map(func).collect::<Vec<B>>()
+}
+
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use crate::tokenizer::get_code_cursor;
     use crate::tokenizer::read_all_tokens;
-    use pretty_assertions::assert_eq;
 
     use super::*;
 
