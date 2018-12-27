@@ -5,6 +5,7 @@ use crate::errors::KtError;
 use crate::errors::ParserError;
 use crate::parser::ast::Annotation;
 use crate::parser::ast::CallSiteTypeParams;
+use crate::parser::ast::Expr;
 use crate::parser::ast::FileAnnotation;
 use crate::parser::ast::Function;
 use crate::parser::ast::FunctionBody;
@@ -18,6 +19,9 @@ use crate::parser::ast::Parameter;
 use crate::parser::ast::ParameterMutability;
 use crate::parser::ast::Preamble;
 use crate::parser::ast::Property;
+use crate::parser::ast::PropertyGetter;
+use crate::parser::ast::PropertyInitialization;
+use crate::parser::ast::PropertySetter;
 use crate::parser::ast::SimpleUserType;
 use crate::parser::ast::TopLevelObject;
 use crate::parser::ast::Type;
@@ -91,13 +95,106 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
 
     let type_constraints = read_type_constraints(s)?;
 
+    let mut initialization = PropertyInitialization::None;
+
+    if s.optional_expect_keyword("by") {
+        let e = read_expresion(s)?;
+        s.optional_expect(Token::Semicolon);
+        initialization = PropertyInitialization::Delegation(e);
+    } else if s.optional_expect(Token::Equals) {
+        let e = read_expresion(s)?;
+        s.optional_expect(Token::Semicolon);
+        initialization = PropertyInitialization::Expr(e);
+    }
+
+    let (getter, setter) = s.optional(&read_getter_setter)
+        .unwrap_or((None, None));
+
     Ok(Property {
         modifiers,
         type_parameters,
         receiver,
         declarations,
         type_constraints,
+        initialization,
+        getter,
+        setter,
     })
+}
+
+fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Option<PropertySetter>), KtError> {
+    let modifiers = read_modifiers(s)?;
+    let mut getter: Option<PropertyGetter> = None;
+    let mut setter: Option<PropertySetter> = None;
+
+    match s.read_token(0) {
+        Token::Id(ref t) if t == "get" => {
+            getter = Some(read_property_getter(s, modifiers)?);
+            let modifiers = read_modifiers(s)?;
+
+            match s.read_token(0) {
+                Token::Id(ref t) if t == "set" => {
+                    setter = Some(read_property_setter(s, modifiers)?);
+                }
+                _ => {}
+            }
+        }
+        Token::Id(ref t) if t == "set" => {
+            setter = Some(read_property_setter(s, modifiers)?);
+            let modifiers = read_modifiers(s)?;
+
+            match s.read_token(0) {
+                Token::Id(ref t) if t == "get" => {
+                    getter = Some(read_property_getter(s, modifiers)?);
+                }
+                _ => {}
+            }
+        }
+        _ => {
+            return s.make_error_expected_of(vec![Token::Id(String::from("set")), Token::Id(String::from("get"))]);
+        }
+    }
+
+    Ok((getter, setter))
+}
+
+fn read_property_getter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<PropertyGetter, KtError> {
+    s.expect_keyword("get")?;
+    if s.optional_expect(Token::LeftParen) {
+        s.expect(Token::RightParen)?;
+
+        let mut ty = None;
+
+        if s.optional_expect(Token::Colon) {
+            ty = Some(read_type(s)?);
+        }
+
+        let body = Some(read_function_body(s)?);
+
+        Ok(PropertyGetter { modifiers, ty, body })
+    } else {
+        Ok(PropertyGetter { modifiers, ty: None, body: None })
+    }
+}
+
+fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<PropertySetter, KtError> {
+    s.expect_keyword("set")?;
+    if s.optional_expect(Token::LeftParen) {
+        let param_modifiers = read_modifiers(s)?;
+        let param_name = Some(s.expect_id()?);
+        let mut param_ty = None;
+
+        if s.optional_expect(Token::Colon) {
+            param_ty = Some(read_type(s)?);
+        }
+
+        s.expect(Token::RightParen)?;
+        let body = Some(read_function_body(s)?);
+
+        Ok(PropertySetter { modifiers, param_modifiers, param_name, param_ty, body })
+    } else {
+        Ok(PropertySetter { modifiers, param_modifiers: vec![], param_name: None, param_ty: None, body: None })
+    }
 }
 
 fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
@@ -116,6 +213,10 @@ fn read_multiple_variable_declarations(s: &mut TokenCursor) -> Result<Vec<Variab
     let decls = s.separated_by(Token::Comma, &read_variable_declaration)?;
     s.expect(Token::RightParen)?;
     Ok(decls)
+}
+
+fn read_expresion(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    unimplemented!()
 }
 
 fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Function, KtError> {
@@ -335,8 +436,10 @@ fn read_call_site_type_params(s: &mut TokenCursor) -> Result<CallSiteTypeParams,
     }
 }
 
-fn read_function_body(_s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
-    unimplemented!()
+fn read_function_body(s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
+    s.expect(Token::LeftBrace)?;
+    s.expect(Token::RightBrace)?;
+    Ok(FunctionBody::Block)
 }
 
 fn read_type_constraints(s: &mut TokenCursor) -> Result<Vec<TypeConstraint>, KtError> {
@@ -536,6 +639,13 @@ mod tests {
         println!("{:?}", get_ast("val (a, b)", read_top_level_object));
         println!("{:?}", get_ast("val a: Int", read_top_level_object));
         println!("{:?}", get_ast("val Int.a: Int", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int internal set", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int private set", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int private get", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int get() {}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a) {}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a: Int) {}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a: Int) {} get() {}", read_top_level_object));
     }
 }
 

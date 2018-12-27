@@ -71,6 +71,37 @@ pub struct Property {
     pub receiver: Option<Type>,
     pub declarations: Vec<VariableDeclarationEntry>,
     pub type_constraints: Vec<TypeConstraint>,
+    pub initialization: PropertyInitialization,
+    pub getter: Option<PropertyGetter>,
+    pub setter: Option<PropertySetter>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum PropertyInitialization {
+    None,
+    Expr(Expr),
+    Delegation(Expr),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct PropertyGetter {
+    pub modifiers: Vec<Modifier>,
+    pub ty: Option<Type>,
+    pub body: Option<FunctionBody>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct PropertySetter {
+    pub modifiers: Vec<Modifier>,
+    pub param_modifiers: Vec<Modifier>,
+    pub param_name: Option<String>,
+    pub param_ty: Option<Type>,
+    pub body: Option<FunctionBody>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Expr{
+
 }
 
 #[derive(Clone, PartialEq, Debug)]
