@@ -35,6 +35,7 @@ pub enum Token {
     Comma,
     QuestionMark,
     ExclamationMark,
+    DoubleExclamationMark,
     NotEquals,
     NotDoubleEquals,
     LeftArrow,
@@ -231,6 +232,10 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
                     }
                     _ => Token::ExclamationMark
                 }
+            }
+            b'!' => {
+                stream.next();
+                Token::DoubleExclamationMark
             }
             _ => Token::ExclamationMark
         },

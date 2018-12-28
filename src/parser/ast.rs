@@ -101,11 +101,27 @@ pub struct PropertySetter {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
-    Chain{
+    Chain {
         operands: Vec<Expr>,
-        operators: Vec<String>
+        operators: Vec<String>,
     },
-
+    InfixFun {
+        parameters: Vec<Expr>,
+        functions: Vec<String>,
+    },
+    Prefix {
+        prefix: Vec<String>,
+        expr: Arc<Expr>,
+    },
+    Postfix {
+        expr: Arc<Expr>,
+        postfix: Vec<String>,
+    },
+    Is {
+        expr: Arc<Expr>,
+        ty: Type,
+    },
+    Ref(String),
 }
 
 #[derive(Clone, PartialEq, Debug)]

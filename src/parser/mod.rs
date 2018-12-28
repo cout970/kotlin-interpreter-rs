@@ -171,7 +171,6 @@ impl TokenCursor {
         Ok((accum_operands, accum_operators))
     }
 
-
     pub fn expect(&mut self, tk: Token) -> Result<(), KtError> {
         if tk == self.read_token(0) {
             self.next();

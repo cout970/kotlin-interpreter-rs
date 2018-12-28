@@ -33,6 +33,25 @@ use crate::parser::ast::VariableDeclarationEntry;
 use crate::parser::TokenCursor;
 use crate::tokenizer::Token;
 
+macro_rules! create_operator_fun {
+    ($name: ident, $(Token::$e: tt => $s: expr,)+) => {
+        fn $name(s: &mut TokenCursor) -> Result<String, KtError> {
+            let res = match s.read_token(0) {
+                $(Token::$e => $s,)+
+                _ => {
+                    return s.make_error_expected_of(vec![
+                        $(Token::$e,)+
+                    ]);
+                }
+            };
+
+            s.next();
+            Ok(String::from(res))
+        }
+    };
+}
+
+
 pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
     let preamble = read_preamble(s)?;
     let objects = s.many0(&read_top_level_object)?;
@@ -217,28 +236,44 @@ fn read_multiple_variable_declarations(s: &mut TokenCursor) -> Result<Vec<Variab
 }
 
 // BEGIN Expr
+
+create_operator_fun!(
+    read_expr_assignment_operator,
+    Token::Equals => "=",
+    Token::PlusEquals => "+=",
+    Token::MinusEquals => "-=",
+    Token::TimesEquals => "*=",
+    Token::DivEquals => "/=",
+    Token::ModEquals => "%=",
+);
+
 fn read_expresion(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let (dis, ops) = s.chain(&read_expr_assignment_operator, &read_expr_disjunction)?;
     Ok(Expr::Chain { operands: dis, operators: ops })
 }
 
-fn read_expr_assignment_operator(s: &mut TokenCursor) -> Result<String, KtError> {
-    let res = match s.read_token(0) {
-        Token::Equals => "=",
-        Token::PlusEquals => "+=",
-        Token::MinusEquals => "-=",
-        Token::TimesEquals => "*=",
-        Token::DivEquals => "/=",
-        Token::ModEquals => "%=",
-        _ => {
-            return s.make_error_expected_of(vec![Token::Equals, Token::PlusEquals, Token::MinusEquals, Token::TimesEquals, Token::DivEquals, Token::ModEquals]);
-        }
-    };
-
-    s.next();
-    Ok(String::from(res))
+fn read_expr_disjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleAmpersand), &read_expr_conjunction)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) })
 }
 
+fn read_expr_conjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::DoublePipe), &read_expr_equality_comparison)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+}
+
+create_operator_fun!(
+    read_expr_equality_operator,
+    Token::DoubleEquals => "==",
+    Token::NotEquals => "!=",
+);
+
+fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_equality_operator, &read_expr_comparison)?;
+    Ok(Expr::Chain { operands: dis, operators: ops })
+}
+
+// TODO add more tokens for <= >=
 fn read_expr_comparison_operator(s: &mut TokenCursor) -> Result<String, KtError> {
     let res = match s.read_token(0) {
         Token::LeftAngleBracket => {
@@ -266,44 +301,153 @@ fn read_expr_comparison_operator(s: &mut TokenCursor) -> Result<String, KtError>
     Ok(String::from(res))
 }
 
-fn read_expr_equality_operator(s: &mut TokenCursor) -> Result<String, KtError> {
-    let res = match s.read_token(0) {
-        Token::DoubleEquals => "==",
-        Token::NotEquals => "!=",
-        _ => {
-            return s.make_error_expected_of(vec![Token::DoubleEquals, Token::NotEquals]);
-        }
-    };
-
-    s.next();
-    s.next();
-    Ok(String::from(res))
-}
-
-
-fn read_expr_disjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleAmpersand), &read_expr_conjunction)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) })
-}
-
-fn read_expr_conjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::DoublePipe), &read_expr_equality_comparison)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
-}
-
-fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&read_expr_equality_operator, &read_expr_comparison)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
-}
-
 fn read_expr_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let (dis, ops) = s.chain(&read_expr_comparison_operator, &read_name_infix)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+    Ok(Expr::Chain { operands: dis, operators: ops })
 }
 
 fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    unimplemented!()
-//    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+    let expr = read_expr_elvis(s)?;
+
+    match s.read_token(0) {
+        Token::Is | Token::NotIs => {
+            s.next();
+            let ty = read_type(s)?;
+            Ok(Expr::Is { expr: Arc::new(expr), ty })
+        }
+        _ => {
+            let mut accum_operands = vec![];
+            let mut accum_operators = vec![];
+
+            accum_operands.push(expr);
+
+            while let Some(operator) = s.optional(&read_expr_comparison_operator) {
+                accum_operators.push(operator);
+                accum_operands.push(read_expr_elvis(s)?);
+            }
+
+            Ok(Expr::Chain { operands: accum_operands, operators: accum_operators })
+        }
+    }
+}
+
+fn read_expr_elvis(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::Elvis), &read_expr_infix_fun_call)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from(":?")) })
+}
+
+fn read_expr_infix_fun_call(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect_id(), &read_expr_range)?;
+    Ok(Expr::InfixFun { parameters: dis, functions: ops })
+}
+
+fn read_expr_range(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleDot), &read_expr_add)?;
+    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("..")) })
+}
+
+create_operator_fun!(
+    read_expr_add_operator,
+    Token::Plus => "+",
+    Token::Minus => "-",
+);
+
+fn read_expr_add(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_add_operator, &read_expr_multiply)?;
+    Ok(Expr::Chain { operands: dis, operators: ops })
+}
+
+create_operator_fun!(
+    read_expr_multiply_operator,
+    Token::Asterisk => "*",
+    Token::Slash => "/",
+    Token::Percent => "%",
+);
+
+fn read_expr_multiply(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_multiply_operator, &read_expr_type_rhs)?;
+    Ok(Expr::Chain { operands: dis, operators: ops })
+}
+
+create_operator_fun!(
+    read_expr_as_operator,
+    Token::As => "as",
+    Token::AsQuestionMark => "as?",
+);
+
+fn read_expr_type_rhs(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let (dis, ops) = s.chain(&read_expr_as_operator, &read_expr_prefix_unary)?;
+    Ok(Expr::Chain { operands: dis, operators: ops })
+}
+
+create_operator_fun!(
+    read_expr_prefix_operator,
+    Token::Minus => "-",
+    Token::Plus => "+",
+    Token::DoublePlus => "++",
+    Token::DoubleMinus => "--",
+    Token::ExclamationMark => "!",
+);
+
+fn read_expr_prefix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
+//  prefixUnaryOperation
+//    : "-" : "+"
+//    : "++" : "--"
+//    : "!"
+//    : annotations
+//    : labelDefinition
+//  ; TODO
+    read_expr_prefix_operator(s)
+}
+
+fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let ops = s.many0(&read_expr_prefix_operation)?;
+    let expr = read_expr_postfix_unary(s)?;
+    Ok(Expr::Prefix { prefix: ops, expr: Arc::new(expr) })
+}
+
+fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
+//  postfixUnaryOperation
+//    : "++" : "--" : "!!"
+//    : callSuffix
+//    : arrayAccess
+//    : memberAccessOperation postfixUnaryExpression
+//  ; TODO
+//    match s.read_token(0) {
+//        Token::DoublePlus => "++",
+//        Token::DoubleMinus => "--",
+//        Token::DoubleExclamationMark => "!!",
+//        // callSuffix
+//        Token::LeftBracket => {
+//
+//        }
+//        _ => panic!()
+//    }
+    s.make_error_expected_of(vec![])
+}
+
+fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    let expr = read_expr_atomic(s)?;
+    let ops = s.many0(&read_expr_postfix_operation)?;
+    Ok(Expr::Postfix { expr: Arc::new(expr), postfix: ops })
+}
+
+fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    match s.read_token(0) {
+        Token::LeftParen => {
+            s.next();
+            let e = read_expresion(s)?;
+            s.expect(Token::RightParen)?;
+            Ok(e)
+        }
+        Token::Id(name) => {
+            s.next();
+            Ok(Expr::Ref(name))
+        }
+        _ => {
+            s.make_error_expected_of(vec![Token::Id(String::from("A variable"))])
+        }
+    }
 }
 
 // END Expr
@@ -348,7 +492,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     };
 
     let type_constraints = read_type_constraints(s)?;
-//    let body = s.optional(&read_function_body);
+    let body = s.optional(&read_function_body);
     let body = None;
 
     Ok(Function {
@@ -735,6 +879,17 @@ mod tests {
         println!("{:?}", get_ast("var a: Int set(a) {}", read_top_level_object));
         println!("{:?}", get_ast("var a: Int set(a: Int) {}", read_top_level_object));
         println!("{:?}", get_ast("var a: Int set(a: Int) {} get() {}", read_top_level_object));
+    }
+
+    #[test]
+    fn test_expr() {
+        println!("{:?}", get_ast("a", read_expresion));
+        println!("{:?}", get_ast("(a)", read_expresion));
+        println!("{:?}", get_ast("a + b", read_expresion));
+        println!("{:?}", get_ast("a * b", read_expresion));
+        println!("{:?}", get_ast("a plus b", read_expresion));
+//        println!("{:?}", get_ast("a++", read_expresion));
+        println!("{:?}", get_ast("++a", read_expresion));
     }
 }
 
