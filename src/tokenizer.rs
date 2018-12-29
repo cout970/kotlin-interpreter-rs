@@ -17,7 +17,6 @@ pub enum Token {
     LitString(String),
     // Signs
     Semicolon,
-    Newline,
     LeftParen,
     RightParen,
     LeftBrace,
@@ -170,7 +169,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let c1 = stream.read_u8(1);
 
     let tk = match c0 {
-        b'\n' => Token::Newline,
+        b'\n' => Token::Semicolon,
         b';' => Token::Semicolon,
         b'(' => Token::LeftParen,
         b')' => Token::RightParen,
@@ -756,7 +755,7 @@ mod tests {
             Token::Asterisk, Token::Slash, Token::Percent, Token::Equals, Token::DoubleEquals,
             Token::TripleEquals, Token::NotEquals, Token::NotDoubleEquals, Token::PlusEquals,
             Token::Minus, Token::Equals, Token::TimesEquals, Token::DivEquals, Token::ModEquals,
-            Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe, Token::Newline,
+            Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe, Token::Semicolon,
             Token::EOF,
         ];
 

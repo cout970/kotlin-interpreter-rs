@@ -122,6 +122,13 @@ pub enum Expr {
         ty: Type,
     },
     Ref(String),
+    Boolean(bool),
+    Char(char),
+    Double(f64),
+    Float(f32),
+    Int(i32),
+    Long(i64),
+    Null,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -145,8 +152,33 @@ pub struct Function {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FunctionBody {
-    Block,
-    Expression,
+    Block(Vec<Statement>),
+    Expression(Expr),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Statement {
+    Expr(Expr),
+    Decl(Declaration),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Declaration {
+    Function(Function),
+    Property(Property),
+    Class(Class),
+    TypeAlias(TypeAlias),
+    Object(Object),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct TypeAlias{
+
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Object {
+
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -168,6 +200,7 @@ pub struct FunctionParameter {
     pub mutability: ParameterMutability,
     pub name: String,
     pub ty: Type,
+    pub default_value: Option<Expr>,
 }
 
 #[derive(Clone, PartialEq, Debug)]

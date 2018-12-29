@@ -76,6 +76,5 @@ pub fn print_code_location(input: &str, span: Span) -> String {
 
     let mut output = String::new();
     write!(&mut output, "\n{} │ {}\n{} │ {}\n{} │ {}", line_num_str, line, spaces, pointer, spaces, trail).unwrap();
-
     output
 }

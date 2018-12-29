@@ -140,6 +140,30 @@ impl TokenCursor {
         Ok(accum)
     }
 
+    pub fn optional_separated_by_many1<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, KtError>
+        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+        let mut accum: Vec<T> = vec![];
+
+        loop {
+            let save = self.save();
+            let res = match func(self) {
+                Ok(pair) => pair,
+                Err(_) => {
+                    self.restore(save);
+                    break;
+                }
+            };
+            accum.push(res);
+            if !self.optional_expect(tk.clone()) {
+                break;
+            } else {
+                while self.optional_expect(tk.clone()) {}
+            }
+        }
+
+        Ok(accum)
+    }
+
     pub fn optional<T, F>(&mut self, func: &F) -> Option<T>
         where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
         let save = self.save();

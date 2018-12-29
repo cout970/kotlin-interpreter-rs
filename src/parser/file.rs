@@ -4,33 +4,9 @@ use crate::create_vec;
 use crate::errors::KtError;
 use crate::errors::ParserError;
 use crate::map;
-use crate::parser::ast::Annotation;
-use crate::parser::ast::CallSiteTypeParams;
-use crate::parser::ast::Expr;
-use crate::parser::ast::FileAnnotation;
-use crate::parser::ast::Function;
-use crate::parser::ast::FunctionBody;
-use crate::parser::ast::FunctionParameter;
-use crate::parser::ast::FunctionType;
-use crate::parser::ast::Import;
-use crate::parser::ast::KotlinFile;
-use crate::parser::ast::Modifier;
-use crate::parser::ast::PackageHeader;
-use crate::parser::ast::Parameter;
-use crate::parser::ast::ParameterMutability;
-use crate::parser::ast::Preamble;
-use crate::parser::ast::Property;
-use crate::parser::ast::PropertyGetter;
-use crate::parser::ast::PropertyInitialization;
-use crate::parser::ast::PropertySetter;
-use crate::parser::ast::SimpleUserType;
-use crate::parser::ast::TopLevelObject;
-use crate::parser::ast::Type;
-use crate::parser::ast::TypeConstraint;
-use crate::parser::ast::TypeParameter;
-use crate::parser::ast::TypeReference;
-use crate::parser::ast::VariableDeclarationEntry;
+use crate::parser::ast::*;
 use crate::parser::TokenCursor;
+use crate::tokenizer::Literal;
 use crate::tokenizer::Token;
 
 macro_rules! create_operator_fun {
@@ -51,6 +27,9 @@ macro_rules! create_operator_fun {
     };
 }
 
+fn expect_token(tk: Token) -> impl Fn(&mut TokenCursor) -> Result<(), KtError> {
+    move |s: &mut TokenCursor| s.expect(tk.clone())
+}
 
 pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
     let preamble = read_preamble(s)?;
@@ -253,19 +232,21 @@ fn read_expresion(s: &mut TokenCursor) -> Result<Expr, KtError> {
 }
 
 fn read_expr_disjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleAmpersand), &read_expr_conjunction)?;
+    let (dis, ops) = s.chain(&expect_token(Token::DoubleAmpersand), &read_expr_conjunction)?;
     Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) })
 }
 
 fn read_expr_conjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::DoublePipe), &read_expr_equality_comparison)?;
+    let (dis, ops) = s.chain(&expect_token(Token::DoublePipe), &read_expr_equality_comparison)?;
     Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
 }
 
 create_operator_fun!(
     read_expr_equality_operator,
     Token::DoubleEquals => "==",
+    Token::TripleEquals => "===",
     Token::NotEquals => "!=",
+    Token::NotDoubleEquals => "!=",
 );
 
 fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -332,7 +313,7 @@ fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
 }
 
 fn read_expr_elvis(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::Elvis), &read_expr_infix_fun_call)?;
+    let (dis, ops) = s.chain(&expect_token(Token::Elvis), &read_expr_infix_fun_call)?;
     Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from(":?")) })
 }
 
@@ -342,7 +323,7 @@ fn read_expr_infix_fun_call(s: &mut TokenCursor) -> Result<Expr, KtError> {
 }
 
 fn read_expr_range(s: &mut TokenCursor) -> Result<Expr, KtError> {
-    let (dis, ops) = s.chain(&|s| s.expect(Token::DoubleDot), &read_expr_add)?;
+    let (dis, ops) = s.chain(&expect_token(Token::DoubleDot), &read_expr_add)?;
     Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("..")) })
 }
 
@@ -444,8 +425,38 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             s.next();
             Ok(Expr::Ref(name))
         }
+        Token::True => {
+            s.next();
+            Ok(Expr::Boolean(true))
+        }
+        Token::False => {
+            s.next();
+            Ok(Expr::Boolean(false))
+        }
+        Token::Null => {
+            s.next();
+            Ok(Expr::Null)
+        }
+        Token::LitChar(a) => {
+            s.next();
+            Ok(Expr::Char(a))
+        }
+        Token::Literal(lit) => {
+            s.next();
+            match lit {
+                Literal::Double(a) => Ok(Expr::Double(a)),
+                Literal::Float(a) => Ok(Expr::Float(a)),
+                Literal::Int(a) => Ok(Expr::Int(a)),
+                Literal::Long(a) => Ok(Expr::Long(a)),
+            }
+        }
         _ => {
-            s.make_error_expected_of(vec![Token::Id(String::from("A variable"))])
+            s.make_error_expected_of(vec![
+                Token::Id(String::from("A variable")),
+                Token::True, Token::False,
+                Token::LitChar('c'),
+                Token::Null
+            ])
         }
     }
 }
@@ -493,7 +504,6 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 
     let type_constraints = read_type_constraints(s)?;
     let body = s.optional(&read_function_body);
-    let body = None;
 
     Ok(Function {
         modifiers,
@@ -670,9 +680,69 @@ fn read_call_site_type_params(s: &mut TokenCursor) -> Result<CallSiteTypeParams,
 }
 
 fn read_function_body(s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
+    if s.optional_expect(Token::Equals) {
+        Ok(FunctionBody::Expression(read_expresion(s)?))
+    } else {
+        Ok(FunctionBody::Block(read_block(s)?))
+    }
+}
+
+fn read_block(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
     s.expect(Token::LeftBrace)?;
+    let statements = read_statements(s)?;
     s.expect(Token::RightBrace)?;
-    Ok(FunctionBody::Block)
+    Ok(statements)
+}
+
+fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
+    s.many0(&expect_token(Token::Semicolon))?;
+    let statements = s.optional_separated_by_many1(Token::Semicolon, &read_statement)?;
+    s.many0(&expect_token(Token::Semicolon))?;
+    Ok(statements)
+}
+
+fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
+    match s.optional(&read_declaration) {
+        Some(t) => Ok(Statement::Decl(t)),
+        None => Ok(Statement::Expr(read_expresion(s)?))
+    }
+}
+
+fn read_declaration(s: &mut TokenCursor) -> Result<Declaration, KtError> {
+    let modifiers = read_modifiers(s)?;
+
+    let res = match s.read_token(0) {
+        Token::Fun => Declaration::Function(read_function(s, modifiers)?),
+        Token::Val | Token::Var => Declaration::Property(read_property(s, modifiers)?),
+        Token::Class | Token::Interface => Declaration::Class(read_class(s, modifiers)?),
+        Token::TypeAlias => Declaration::TypeAlias(read_typealias(s, modifiers)?),
+        Token::Object => Declaration::Object(read_object(s, modifiers)?),
+        _ => {
+            return s.make_error_expected_of(vec![
+                Token::Fun,
+                Token::Val,
+                Token::Var,
+                Token::Class,
+                Token::Interface,
+                Token::TypeAlias,
+                Token::Object,
+            ]);
+        }
+    };
+
+    Ok(res)
+}
+
+fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, KtError> {
+    unimplemented!()
+}
+
+fn read_typealias(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<TypeAlias, KtError> {
+    unimplemented!()
+}
+
+fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
+    unimplemented!()
 }
 
 fn read_type_constraints(s: &mut TokenCursor) -> Result<Vec<TypeConstraint>, KtError> {
@@ -714,8 +784,13 @@ fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtE
     let name = s.expect_id()?;
     s.expect(Token::Colon)?;
     let ty = read_type(s)?;
+    let mut default_value = None;
 
-    Ok(FunctionParameter { modifiers, mutability, name, ty })
+    if s.optional_expect(Token::Equals) {
+        default_value = Some(read_expresion(s)?);
+    }
+
+    Ok(FunctionParameter { modifiers, mutability, name, ty, default_value })
 }
 
 fn read_preamble(s: &mut TokenCursor) -> Result<Preamble, KtError> {
@@ -835,6 +910,18 @@ mod tests {
     }
 
     #[test]
+    fn test_complex_code() {
+        println!("{:?}", get_ast(
+            r#"{
+                    val hello = 0
+                    val world = 1
+
+                    println(hello + world)
+                 }"#,
+            read_block));
+    }
+
+    #[test]
     fn test_types() {
         println!("{:?}", get_ast("(Int, Int) -> Int", read_type));
         println!("{:?}", get_ast("((Int, Int) -> Int)", read_type));
@@ -862,7 +949,7 @@ mod tests {
         println!("{:?}", get_ast("fun <T> main<T: Int>(c: T): T", read_top_level_object));
         println!("{:?}", get_ast("fun <T> main(c: List<T>): T", read_top_level_object));
         println!("{:?}", get_ast("fun <T> java.lang.Integer.main(c: List<T>): T", read_top_level_object));
-//        println!("{:?}", get_ast("fun <T> main(c: Int = 0): T", read_top_level_object));
+        println!("{:?}", get_ast("fun <T> main(c: Int = 0): T", read_top_level_object));
     }
 
     #[test]
@@ -875,10 +962,10 @@ mod tests {
         println!("{:?}", get_ast("var a: Int internal set", read_top_level_object));
         println!("{:?}", get_ast("var a: Int private set", read_top_level_object));
         println!("{:?}", get_ast("var a: Int private get", read_top_level_object));
-        println!("{:?}", get_ast("var a: Int get() {}", read_top_level_object));
-        println!("{:?}", get_ast("var a: Int set(a) {}", read_top_level_object));
-        println!("{:?}", get_ast("var a: Int set(a: Int) {}", read_top_level_object));
-        println!("{:?}", get_ast("var a: Int set(a: Int) {} get() {}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int get() { field }", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a) { field = a}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a: Int) { field = a}", read_top_level_object));
+        println!("{:?}", get_ast("var a: Int set(a: Int) {} get() = 0", read_top_level_object));
     }
 
     #[test]
@@ -889,7 +976,20 @@ mod tests {
         println!("{:?}", get_ast("a * b", read_expresion));
         println!("{:?}", get_ast("a plus b", read_expresion));
 //        println!("{:?}", get_ast("a++", read_expresion));
+//        println!("{:?}", get_ast("a[0]", read_expresion));
         println!("{:?}", get_ast("++a", read_expresion));
+        println!("{:?}", get_ast("false || (true && false)", read_expresion));
+        println!("{:?}", get_ast("null ?: 1", read_expresion));
+        println!("{:?}", get_ast("1 + 2 / 3", read_expresion));
+        println!("{:?}", get_ast("1.5 + 6.4", read_expresion));
+        println!("{:?}", get_ast("'c'", read_expresion));
+        println!("{:?}", get_ast("1 > 2", read_expresion));
+        println!("{:?}", get_ast("1 >= 2", read_expresion));
+        println!("{:?}", get_ast("1 == 3", read_expresion));
+        println!("{:?}", get_ast("1 !== 3", read_expresion));
+        println!("{:?}", get_ast("1 === 3", read_expresion));
+        println!("{:?}", get_ast("a = 5", read_expresion));
+        println!("{:?}", get_ast("a += 5", read_expresion));
     }
 }
 

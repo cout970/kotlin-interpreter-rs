@@ -39,14 +39,26 @@ impl Display for KtError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             KtError::Tokenizer { code, span, info } => {
+                // Use color red
+                write!(f, "\x1B[31m")?;
+
                 write!(f, "\n\nAn error occurred: \n")?;
                 print_tokenizer_error(f, code, *span, info)?;
                 write!(f, "\n\n")?;
+
+                // Reset color
+                write!(f, "\x1B[0m")?;
             }
             KtError::Parser { code, span, info } => {
+                // Use color red
+                write!(f, "\x1B[31m")?;
+
                 write!(f, "\n\nAn error occurred: \n")?;
                 print_parser_error(f, code, *span, info)?;
                 write!(f, "\n\n")?;
+
+                // Reset color
+                write!(f, "\x1B[0m")?;
             }
         }
         Ok(())
@@ -125,7 +137,6 @@ impl Display for Token {
             Token::LitChar(it) => { write!(f, "{}", it)?; }
             Token::LitString(it) => { write!(f, "{}", it)?; }
             Token::Semicolon => { write!(f, ";")?; }
-            Token::Newline => { write!(f, "\\n")?; }
             Token::LeftParen => { write!(f, "(")?; }
             Token::RightParen => { write!(f, ")")?; }
             Token::LeftBrace => { write!(f, "{{")?; }
