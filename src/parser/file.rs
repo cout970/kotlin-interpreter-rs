@@ -71,7 +71,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
     let mutable = s.optional_expect(Token::Var);
     if !mutable { s.expect(Token::Val)?; }
 
-    let type_parameters = s.optional(&read_type_parameters).unwrap_or_default();
+    let type_parameters = read_type_parameters(s)?;
 
     let save = s.save();
     let receiver = match s.optional(&read_receiver_type) {
@@ -102,7 +102,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
         initialization = PropertyInitialization::Delegation(e);
     } else if s.optional_expect(Token::Equals) {
         let e = read_expresion(s)?;
-        s.optional_expect(Token::Semicolon);
+//        s.optional_expect(Token::Semicolon);
         initialization = PropertyInitialization::Expr(e);
     }
 
@@ -472,7 +472,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 //      typeConstraints
 //      functionBody?
 //  ;
-    let type_parameters = s.optional(&read_type_parameters).unwrap_or(vec![]);
+    let type_parameters = read_type_parameters(s)?;
 
     let save = s.save();
     let receiver = match s.optional(&read_receiver_type) {
@@ -488,7 +488,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     };
 
     let name = s.expect_id()?;
-    let type_parameters2 = s.optional(&read_type_parameters).unwrap_or(vec![]);
+    let type_parameters2 = read_type_parameters(s)?;
     let value_parameters = read_value_parameters(s)?;
 
     let return_type = if s.optional_expect(Token::Colon) {
@@ -519,6 +519,10 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 }
 
 fn read_type_parameters(s: &mut TokenCursor) -> Result<Vec<TypeParameter>, KtError> {
+   Ok(s.optional(&read_type_parameters_force).unwrap_or_else(|| vec![]))
+}
+
+fn read_type_parameters_force(s: &mut TokenCursor) -> Result<Vec<TypeParameter>, KtError> {
     s.expect(Token::LeftAngleBracket)?;
     let params = s.separated_by(Token::Comma, &read_type_parameter)?;
     s.expect(Token::RightAngleBracket)?;
@@ -738,7 +742,12 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 }
 
 fn read_typealias(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<TypeAlias, KtError> {
-    unimplemented!()
+    s.expect(Token::TypeAlias)?;
+    let name = s.expect_id()?;
+    let type_parameters = read_type_parameters(s)?;
+    s.expect(Token::Equals)?;
+    let ty = read_type(s)?;
+    Ok(TypeAlias{ name, type_parameters, ty })
 }
 
 fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
@@ -912,13 +921,13 @@ mod tests {
     #[test]
     fn test_complex_code() {
         println!("{:?}", get_ast(
-            r#"{
+            r#"fun main(args: Array<String>) {
                     val hello = 0
                     val world = 1
 
-                    println(hello + world)
+                    println // (hello + world)
                  }"#,
-            read_block));
+            read_file));
     }
 
     #[test]
@@ -990,6 +999,12 @@ mod tests {
         println!("{:?}", get_ast("1 === 3", read_expresion));
         println!("{:?}", get_ast("a = 5", read_expresion));
         println!("{:?}", get_ast("a += 5", read_expresion));
+    }
+
+    #[test]
+    fn test_read_typealias(){
+        println!("{:?}", get_ast("public typealias MyList = List", read_statement));
+        println!("{:?}", get_ast("typealias Set<T> = Hashmap<T, Any>", read_statement));
     }
 }
 

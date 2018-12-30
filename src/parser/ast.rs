@@ -173,7 +173,9 @@ pub enum Declaration {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeAlias{
-
+    pub name: String,
+    pub type_parameters: Vec<TypeParameter>,
+    pub ty: Type,
 }
 
 #[derive(Clone, PartialEq, Debug)]
