@@ -270,7 +270,16 @@ pub struct ClassBody {
     pub enum_entries: Option<Vec<()>>,
     pub members: Vec<Statement>,
 }
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct PrimaryConstructor {
+    pub modifiers: Vec<Modifier>,
+    pub params: Vec<FunctionParameter>
+}
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum DelegationSpecifier {
+    Type(Type),
+    DelegatedBy(Type, Expr),
+    FunctionCall(Type)
 }

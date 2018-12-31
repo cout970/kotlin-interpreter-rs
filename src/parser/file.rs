@@ -800,7 +800,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 }
 
 fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, KtError> {
-//  (modifiers "constructor")? ("(" functionParameter{","} ")")
+    //  (modifiers "constructor")? ("(" functionParameter{","} ")")
     fn primary_constructor_start(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
         let m = read_modifiers(s)?;
         s.expect_keyword("constructor")?;
@@ -809,12 +809,35 @@ fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, K
 
     let modifiers = s.optional(&primary_constructor_start).unwrap_or(vec![]);
     s.expect(Token::LeftParen)?;
-    // TODO ...
+    let params = s.separated_by(Token::Comma, &read_function_parameter)?;
+    s.expect(Token::RightParen)?;
 
-    unimplemented!()
+    Ok(PrimaryConstructor {
+        modifiers,
+        params,
+    })
 }
 
-fn read_delegation_specifier(s: &mut TokenCursor) -> Result<(), KtError> {
+fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
+    let user_type = s.separated_by(Token::Dot, &read_simple_user_type)?;
+    let ty = Type{ annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
+
+    if s.optional_expect_keyword("by") {
+        let expr = read_expresion(s)?;
+        Ok(DelegationSpecifier::DelegatedBy(ty, expr))
+    } else {
+        match s.optional(&read_call_suffix) {
+            Some(t) => {
+                Ok(DelegationSpecifier::FunctionCall(ty))
+            },
+            None => {
+                Ok(DelegationSpecifier::Type(ty))
+            }
+        }
+    }
+}
+
+fn read_call_suffix(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
     unimplemented!()
 }
 
