@@ -519,7 +519,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 }
 
 fn read_type_parameters(s: &mut TokenCursor) -> Result<Vec<TypeParameter>, KtError> {
-   Ok(s.optional(&read_type_parameters_force).unwrap_or_else(|| vec![]))
+    Ok(s.optional(&read_type_parameters_force).unwrap_or_else(|| vec![]))
 }
 
 fn read_type_parameters_force(s: &mut TokenCursor) -> Result<Vec<TypeParameter>, KtError> {
@@ -557,6 +557,10 @@ fn read_receiver_type(s: &mut TokenCursor) -> Result<Type, KtError> {
     let reference = read_type_reference(s, true)?;
 
     Ok(Type { annotations: modifiers, reference })
+}
+
+fn read_annotations(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError> {
+    s.many0(&read_annotation)
 }
 
 fn read_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
@@ -738,6 +742,87 @@ fn read_declaration(s: &mut TokenCursor) -> Result<Declaration, KtError> {
 }
 
 fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, KtError> {
+//    class
+//    :   modifiers ("class" | "interface") SimpleName
+//        typeParameters?
+//        primaryConstructor?
+//        (":" annotations delegationSpecifier{","})?
+//        typeConstraints
+//        (classBody? | enumClassBody)
+//    ;
+
+    let interface = s.optional_expect(Token::Interface);
+    let mut class_type = ClassType::Interface;
+
+    if !interface {
+        s.expect(Token::Class)?;
+
+        if modifiers.iter().any(|m| m.name == "enum") {
+            class_type = ClassType::Enum;
+        } else if modifiers.iter().any(|m| m.name == "annotation") {
+            class_type = ClassType::Annotation;
+        } else {
+            class_type = ClassType::Class;
+        }
+    }
+
+    let name = s.expect_id()?;
+    let type_parameters = read_type_parameters(s)?;
+    let primary_constructor = s.optional(&read_primary_constructor);
+
+    let mut annotations = vec![];
+    let mut delegations = vec![];
+
+    if s.optional_expect(Token::Colon) {
+        annotations = read_annotations(s)?;
+        delegations = s.separated_by(Token::Comma, &read_delegation_specifier)?;
+    }
+
+    let type_constraints = read_type_constraints(s)?;
+
+    let body = if class_type == ClassType::Enum {
+        Some(read_enum_body(s)?)
+    } else {
+        s.optional(&read_class_body)
+    };
+
+    Ok(Class {
+        modifiers,
+        class_type,
+        name,
+        type_parameters,
+        primary_constructor,
+        annotations,
+        delegations,
+        type_constraints,
+        body,
+    })
+}
+
+fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, KtError> {
+//  (modifiers "constructor")? ("(" functionParameter{","} ")")
+    fn primary_constructor_start(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
+        let m = read_modifiers(s)?;
+        s.expect_keyword("constructor")?;
+        Ok(m)
+    }
+
+    let modifiers = s.optional(&primary_constructor_start).unwrap_or(vec![]);
+    s.expect(Token::LeftParen)?;
+    // TODO ...
+
+    unimplemented!()
+}
+
+fn read_delegation_specifier(s: &mut TokenCursor) -> Result<(), KtError> {
+    unimplemented!()
+}
+
+fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
+    unimplemented!()
+}
+
+fn read_enum_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
     unimplemented!()
 }
 
@@ -747,7 +832,7 @@ fn read_typealias(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<TypeA
     let type_parameters = read_type_parameters(s)?;
     s.expect(Token::Equals)?;
     let ty = read_type(s)?;
-    Ok(TypeAlias{ name, type_parameters, ty })
+    Ok(TypeAlias { name, type_parameters, ty })
 }
 
 fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
@@ -1002,7 +1087,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_typealias(){
+    fn test_read_typealias() {
         println!("{:?}", get_ast("public typealias MyList = List", read_statement));
         println!("{:?}", get_ast("typealias Set<T> = Hashmap<T, Any>", read_statement));
     }

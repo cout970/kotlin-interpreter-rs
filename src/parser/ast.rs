@@ -50,12 +50,6 @@ pub struct Modifier {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum ClassType {
-    Class,
-    Interface,
-}
-
-#[derive(Clone, PartialEq, Debug)]
 pub enum TopLevelObject {
     Class(Class),
     Object,
@@ -172,16 +166,14 @@ pub enum Declaration {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct TypeAlias{
+pub struct TypeAlias {
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
     pub ty: Type,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Object {
-
-}
+pub struct Object {}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeConstraint {
@@ -253,10 +245,32 @@ pub struct FunctionType {
 }
 
 #[derive(Clone, PartialEq, Debug)]
+pub enum ClassType {
+    Class,
+    Interface,
+    Enum,
+    Annotation,
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub struct Class {
     pub modifiers: Vec<Modifier>,
     pub class_type: ClassType,
     pub name: String,
-//    type_parameters: Vec<Type>,
-//    primary_constructor: Option<PrimaryConstructor>,
+    pub type_parameters: Vec<TypeParameter>,
+    pub primary_constructor: Option<PrimaryConstructor>,
+    pub annotations: Vec<Annotation>,
+    pub delegations: Vec<()>,
+    pub type_constraints: Vec<TypeConstraint>,
+    pub body: Option<ClassBody>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ClassBody {
+    pub enum_entries: Option<Vec<()>>,
+    pub members: Vec<Statement>,
+}
+#[derive(Clone, PartialEq, Debug)]
+pub struct PrimaryConstructor {
+
 }
