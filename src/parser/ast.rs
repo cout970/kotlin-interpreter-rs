@@ -52,10 +52,10 @@ pub struct Modifier {
 #[derive(Clone, PartialEq, Debug)]
 pub enum TopLevelObject {
     Class(Class),
-    Object,
+    Object(Object),
     Function(Function),
     Property(Property),
-    TypeAlias,
+    TypeAlias(TypeAlias),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -173,7 +173,14 @@ pub struct TypeAlias {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Object {}
+pub struct Object {
+    pub modifiers: Vec<Modifier>,
+    pub name: String,
+    pub primary_constructor: Option<PrimaryConstructor>,
+    pub annotations: Vec<Annotation>,
+    pub delegations: Vec<DelegationSpecifier>,
+    pub body: Option<ClassBody>,
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeConstraint {
@@ -260,7 +267,7 @@ pub struct Class {
     pub type_parameters: Vec<TypeParameter>,
     pub primary_constructor: Option<PrimaryConstructor>,
     pub annotations: Vec<Annotation>,
-    pub delegations: Vec<()>,
+    pub delegations: Vec<DelegationSpecifier>,
     pub type_constraints: Vec<TypeConstraint>,
     pub body: Option<ClassBody>,
 }
@@ -268,18 +275,76 @@ pub struct Class {
 #[derive(Clone, PartialEq, Debug)]
 pub struct ClassBody {
     pub enum_entries: Option<Vec<()>>,
-    pub members: Vec<Statement>,
+    pub members: Vec<Member>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Member {
+    CompanionObject(Object),
+    Object(Object),
+    Function(Function),
+    Property(Property),
+    Class(Class),
+    TypeAlias(TypeAlias),
+    AnonymousInitializer(AnonymousInitializer),
+    SecondaryConstructor(SecondaryConstructor),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct AnonymousInitializer {
+    pub statements: Vec<Statement>
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct SecondaryConstructor {
+    pub modifiers: Vec<Modifier>,
+    pub params: Vec<FunctionParameter>,
+    pub delegation_call: DelegationCall,
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum DelegationCall {
+    Super(Vec<ValueArgument>),
+    This(Vec<ValueArgument>),
+    None
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PrimaryConstructor {
     pub modifiers: Vec<Modifier>,
-    pub params: Vec<FunctionParameter>
+    pub params: Vec<FunctionParameter>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum DelegationSpecifier {
     Type(Type),
     DelegatedBy(Type, Expr),
-    FunctionCall(Type)
+    FunctionCall(Type),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct CallSuffix {
+    pub type_arguments: Vec<Type>,
+    pub value_arguments: Vec<ValueArgument>,
+    pub annotated_lambda: Option<AnnotatedLambda>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ValueArgument {
+    pub name: Option<String>,
+    pub spread: bool,
+    pub expr: Expr,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct AnnotatedLambda {
+    pub annotations: Vec<Annotation>,
+    pub body: FunctionLiteral,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct FunctionLiteral {
+    pub parameters: Vec<VariableDeclarationEntry>,
+    pub statements: Vec<Statement>,
 }

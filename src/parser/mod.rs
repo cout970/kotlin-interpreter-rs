@@ -178,6 +178,18 @@ impl TokenCursor {
         }
     }
 
+    pub fn optional_vec<T, F>(&mut self, func: &F) -> Vec<T>
+        where F: Fn(&mut TokenCursor) -> Result<Vec<T>, KtError> {
+        let save = self.save();
+        match func(self) {
+            Ok(t) => t,
+            Err(_e) => {
+                self.restore(save);
+                vec![]
+            }
+        }
+    }
+
     pub fn chain<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), KtError>
         where F1: Fn(&mut TokenCursor) -> Result<OR, KtError>,
               F2: Fn(&mut TokenCursor) -> Result<OS, KtError>,
@@ -216,6 +228,10 @@ impl TokenCursor {
         } else {
             false
         }
+    }
+
+    pub fn semi(&mut self) {
+        self.optional_expect(Token::Semicolon);
     }
 
     pub fn optional_expect_keyword(&mut self, keyword: &str) -> bool {

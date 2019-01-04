@@ -668,7 +668,7 @@ fn trim_spaces(stream: &mut CodeCursor) {
     loop {
         let c = stream.read_u8(0);
 
-        if c == b' ' || c == b'\t' || c == b'\r' {
+        if c == b' ' || c == b'\t' || c == b'\r' || c == b'\n' {
             stream.next();
         } else {
             break;

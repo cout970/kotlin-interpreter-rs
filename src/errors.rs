@@ -33,11 +33,15 @@ pub enum ParserError {
 pub enum KtError {
     Tokenizer { code: SourceCode, span: Span, info: TokenizerError },
     Parser { code: SourceCode, span: Span, info: ParserError },
+    Unimplemented
 }
 
 impl Display for KtError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
+            KtError::Unimplemented => {
+                write!(f, "\n\nUnimplemented\n")?;
+            }
             KtError::Tokenizer { code, span, info } => {
                 // Use color red
                 write!(f, "\x1B[31m")?;

@@ -1,6 +1,6 @@
+use std::borrow::Cow;
 use std::fmt::Write;
 use std::sync::Arc;
-use std::borrow::Cow;
 
 pub type SourceCode = Arc<Vec<u8>>;
 
@@ -54,16 +54,40 @@ pub fn print_code_location(input: &str, span: Span) -> String {
     let mut trail = String::new();
 
     for index in line_start..line_end {
-        if index == marker_start {
-            trail.push('┘');
-            pointer.push('\u{028C}');
-        } else if index < marker_start {
-            trail.push('─');
-            pointer.push(' ');
-        } else if index < marker_end {
-            pointer.push('\u{028C}');
+        if byte_input[index] != b' ' && !(byte_input[index] as char).is_ascii_graphic() {
+            if index == marker_start {
+                trail.push('─');
+                trail.push('┘');
+                pointer.push(' ');
+                pointer.push('\u{028C}');
+            } else if index < marker_start {
+                trail.push('─');
+                trail.push('─');
+                pointer.push(' ');
+                pointer.push(' ');
+            } else if index < marker_end {
+                pointer.push('\u{028C}');
+            }
+
+            line.push('\\');
+            line.push(match byte_input[index] {
+                b'\n' => 'n',
+                b'\t' => 't',
+                b'\r' => 'r',
+                _ => '?',
+            });
+        } else {
+            if index == marker_start {
+                trail.push('┘');
+                pointer.push('\u{028C}');
+            } else if index < marker_start {
+                trail.push('─');
+                pointer.push(' ');
+            } else if index < marker_end {
+                pointer.push('\u{028C}');
+            }
+            line.push(byte_input[index] as char);
         }
-        line.push(byte_input[index] as char);
     }
 
     let line_num = (&byte_input[0..marker_start]).iter().filter(|&i| *i == b'\n').count();
