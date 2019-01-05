@@ -109,7 +109,7 @@ pub enum Expr {
     },
     Postfix {
         expr: Arc<Expr>,
-        postfix: Vec<String>,
+        postfix: Vec<ExprPostfix>,
     },
     Is {
         expr: Arc<Expr>,
@@ -123,6 +123,16 @@ pub enum Expr {
     Int(i32),
     Long(i64),
     Null,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum ExprPostfix {
+    Increment,
+    Decrement,
+    AssertNonNull,
+    ArrayAccess(Expr),
+    FunCall(CallSuffix),
+    MemberAccess{ operator: String, next: Expr}
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -167,6 +177,7 @@ pub enum Declaration {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeAlias {
+    pub modifiers: Vec<Modifier>,
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
     pub ty: Type,
@@ -280,7 +291,7 @@ pub struct ClassBody {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct EnumEntry {
-    pub modifiers : Vec<Modifier>,
+    pub modifiers: Vec<Modifier>,
     pub name: String,
     pub value_arguments: Vec<ValueArgument>,
     pub class_body: Option<ClassBody>,
@@ -315,7 +326,7 @@ pub struct SecondaryConstructor {
 pub enum DelegationCall {
     Super(Vec<ValueArgument>),
     This(Vec<ValueArgument>),
-    None
+    None,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -328,7 +339,7 @@ pub struct PrimaryConstructor {
 pub enum DelegationSpecifier {
     Type(Type),
     DelegatedBy(Type, Expr),
-    FunctionCall(Type),
+    FunctionCall(Type, CallSuffix),
 }
 
 #[derive(Clone, PartialEq, Debug)]

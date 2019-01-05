@@ -74,6 +74,7 @@ pub fn print_code_location(input: &str, span: Span) -> String {
                 b'\n' => 'n',
                 b'\t' => 't',
                 b'\r' => 'r',
+                b'\0' => '0',
                 _ => '?',
             });
         } else {

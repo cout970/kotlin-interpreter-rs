@@ -27,6 +27,7 @@ macro_rules! create_operator_fun {
     };
 }
 
+#[allow(unused)]
 macro_rules! always_err {
     () => {Err(KtError::Unimplemented)};
 }
@@ -416,24 +417,52 @@ fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
     Ok(Expr::Prefix { prefix: ops, expr: Arc::new(expr) })
 }
 
-fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
+fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtError> {
+    // Primeros: ++, --, !!, (, <, {, [,
 //  postfixUnaryOperation
 //    : "++" : "--" : "!!"
 //    : callSuffix
 //    : arrayAccess
 //    : memberAccessOperation postfixUnaryExpression
-//  ; TODO
-//    match s.read_token(0) {
-//        Token::DoublePlus => "++",
-//        Token::DoubleMinus => "--",
-//        Token::DoubleExclamationMark => "!!",
-//        // callSuffix
-//        Token::LeftBracket => {
-//
-//        }
-//        _ => panic!()
-//    }
-    s.make_error_expected_of(vec![])
+//  ;
+
+    let suf = match s.read_token(0) {
+        Token::DoublePlus => {s.next(); ExprPostfix::Increment},
+        Token::DoubleMinus => {s.next(); ExprPostfix::Decrement},
+        Token::DoubleExclamationMark => {s.next(); ExprPostfix::AssertNonNull},
+        Token::LeftParen | Token::LeftAngleBracket | Token::LeftBrace => {
+            ExprPostfix::FunCall(read_call_suffix(s)?)
+        }
+        Token::LeftBracket => {
+            s.expect(Token::LeftBracket)?;
+            let expr = read_expresion(s)?;
+            s.expect(Token::RightBracket)?;
+            ExprPostfix::ArrayAccess(expr)
+        }
+        Token::Dot | Token::SafeDot => {
+            let op = match s.read_token(0) {
+                Token::Dot => ".",
+                Token::SafeDot => "?.",
+                _ => panic!("Unexpected token: '{}'", s.read_token(0))
+            };
+            s.next();
+            let next = read_expr_postfix_unary(s)?;
+
+            ExprPostfix::MemberAccess {operator: String::from(op), next }
+        }
+        _ => {
+            return s.make_error_expected_of(vec![
+                Token::DoublePlus,
+                Token::DoubleMinus,
+                Token::DoubleExclamationMark,
+                Token::LeftParen, Token::LeftAngleBracket, Token::LeftBrace,
+                Token::LeftBracket,
+                Token::Dot, Token::QuestionMark, Token::SafeDot
+            ])
+        }
+    };
+
+    Ok(suf)
 }
 
 fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -903,8 +932,8 @@ fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier,
         Ok(DelegationSpecifier::DelegatedBy(ty, expr))
     } else {
         match s.optional(&read_call_suffix) {
-            Some(t) => {
-                Ok(DelegationSpecifier::FunctionCall(ty))
+            Some(suffix) => {
+                Ok(DelegationSpecifier::FunctionCall(ty, suffix))
             }
             None => {
                 Ok(DelegationSpecifier::Type(ty))
@@ -974,9 +1003,9 @@ fn read_type_arguments(s: &mut TokenCursor) -> Result<Vec<Type>, KtError> {
 
 fn read_value_arguments(s: &mut TokenCursor) -> Result<Vec<ValueArgument>, KtError> {
     s.expect(Token::LeftParen)?;
-    let types = s.optional_separated_by(Token::Comma, &read_value_argument)?;
+    let values = s.optional_separated_by(Token::Comma, &read_value_argument)?;
     s.expect(Token::RightParen)?;
-    Ok(vec![])
+    Ok(values)
 }
 
 fn read_value_argument(s: &mut TokenCursor) -> Result<ValueArgument, KtError> {
@@ -993,7 +1022,7 @@ fn read_value_argument(s: &mut TokenCursor) -> Result<ValueArgument, KtError> {
     Ok(ValueArgument {
         name,
         spread,
-        expr: Expr::Null,
+        expr,
     })
 }
 
@@ -1074,7 +1103,7 @@ fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
 
     let mut value_arguments = vec![];
     if s.read_token(0) == Token::LeftParen {
-        value_arguments =  read_value_arguments(s)?;
+        value_arguments = read_value_arguments(s)?;
     }
 
     let mut class_body = None;
@@ -1103,7 +1132,7 @@ fn read_typealias(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<TypeA
     let type_parameters = read_type_parameters(s)?;
     s.expect(Token::Equals)?;
     let ty = read_type(s)?;
-    Ok(TypeAlias { name, type_parameters, ty })
+    Ok(TypeAlias { modifiers, name, type_parameters, ty })
 }
 
 fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
@@ -1308,8 +1337,9 @@ mod tests {
             fun main(args: Array<String>) {
                     val hello = 0
                     val world = 1
-                    println(hello + world)
+                    println(hello + Test().method(world))
             }
+
             // Test
             class Test {
                 init {
@@ -1318,10 +1348,14 @@ mod tests {
 
                 constructor(x: Int) {
                     println(x)
+                    val y = x
+                    +1
+                    println(y)
                 }
 
-                fun method(x: Int) {
+                fun method(x: Int) : Int{
                     println(x)
+                    return x + 1
                 }
             }     
             "#,
@@ -1382,8 +1416,8 @@ mod tests {
         println!("{:?}", get_ast("a + b", read_expresion));
         println!("{:?}", get_ast("a * b", read_expresion));
         println!("{:?}", get_ast("a plus b", read_expresion));
-//        println!("{:?}", get_ast("a++", read_expresion));
-//        println!("{:?}", get_ast("a[0]", read_expresion));
+        println!("{:?}", get_ast("a++", read_expresion));
+        println!("{:?}", get_ast("a[0]", read_expresion));
         println!("{:?}", get_ast("++a", read_expresion));
         println!("{:?}", get_ast("false || (true && false)", read_expresion));
         println!("{:?}", get_ast("null ?: 1", read_expresion));
@@ -1397,6 +1431,8 @@ mod tests {
         println!("{:?}", get_ast("1 === 3", read_expresion));
         println!("{:?}", get_ast("a = 5", read_expresion));
         println!("{:?}", get_ast("a += 5", read_expresion));
+        println!("{:?}", get_ast("list[5]!!", read_expresion));
+        println!("{:?}", get_ast("list[5]!!.get()?.getOther() ?: 1", read_expresion));
     }
 
     #[test]
