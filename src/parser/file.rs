@@ -284,33 +284,14 @@ fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
     Ok(Expr::Chain { operands: dis, operators: ops })
 }
 
-// TODO add more tokens for <= >=
-fn read_expr_comparison_operator(s: &mut TokenCursor) -> Result<String, KtError> {
-    let res = match s.read_token(0) {
-        Token::LeftAngleBracket => {
-            if s.read_token(1) == Token::Equals {
-                s.next();
-                "<="
-            } else {
-                "<"
-            }
-        }
-        Token::RightAngleBracket => {
-            if s.read_token(1) == Token::Equals {
-                s.next();
-                ">="
-            } else {
-                ">"
-            }
-        }
-        _ => {
-            return s.make_error_expected_of(vec![Token::LeftAngleBracket, Token::RightAngleBracket]);
-        }
-    };
 
-    s.next();
-    Ok(String::from(res))
-}
+create_operator_fun!(
+    read_expr_comparison_operator,
+    Token::LeftAngleBracket => "<",
+    Token::LessEquals => "<=",
+    Token::RightAngleBracket => ">",
+    Token::GreaterEquals => ">=",
+);
 
 fn read_expr_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let (dis, ops) = s.chain(&read_expr_comparison_operator, &read_name_infix)?;

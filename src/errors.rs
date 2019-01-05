@@ -149,6 +149,8 @@ impl Display for Token {
             Token::RightBracket => { write!(f, "]")?; }
             Token::LeftAngleBracket => { write!(f, "<")?; }
             Token::RightAngleBracket => { write!(f, ">")?; }
+            Token::LessEquals => { write!(f, "<=")?; }
+            Token::GreaterEquals => { write!(f, ">=")?; }
             Token::At => { write!(f, "@")?; }
             Token::Colon => { write!(f, ":")?; }
             Token::DoubleColon => { write!(f, "::")?; }

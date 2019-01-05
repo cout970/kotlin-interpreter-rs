@@ -25,6 +25,8 @@ pub enum Token {
     RightBracket,
     LeftAngleBracket,
     RightAngleBracket,
+    LessEquals,
+    GreaterEquals,
     At,
     Colon,
     DoubleColon,
@@ -178,8 +180,20 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         b'}' => Token::RightBrace,
         b'[' => Token::LeftBracket,
         b']' => Token::RightBracket,
-        b'<' => Token::LeftAngleBracket,
-        b'>' => Token::RightAngleBracket,
+        b'<' => match c1 {
+            b'=' => {
+                stream.next();
+                Token::LessEquals
+            }
+            _ => Token::LeftAngleBracket
+        },
+        b'>' => match c1 {
+            b'=' => {
+                stream.next();
+                Token::GreaterEquals
+            }
+            _ => Token::RightAngleBracket
+        },
         b'@' => Token::At,
         b'_' => Token::Underscore,
         b':' => match c1 {
