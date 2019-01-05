@@ -274,8 +274,16 @@ pub struct Class {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ClassBody {
-    pub enum_entries: Option<Vec<()>>,
+    pub enum_entries: Vec<EnumEntry>,
     pub members: Vec<Member>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct EnumEntry {
+    pub modifiers : Vec<Modifier>,
+    pub name: String,
+    pub value_arguments: Vec<ValueArgument>,
+    pub class_body: Option<ClassBody>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -298,7 +306,7 @@ pub struct AnonymousInitializer {
 #[derive(Clone, PartialEq, Debug)]
 pub struct SecondaryConstructor {
     pub modifiers: Vec<Modifier>,
-    pub params: Vec<FunctionParameter>,
+    pub parameters: Vec<FunctionParameter>,
     pub delegation_call: DelegationCall,
     pub statements: Vec<Statement>,
 }

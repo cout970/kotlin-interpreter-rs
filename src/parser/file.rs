@@ -275,7 +275,7 @@ create_operator_fun!(
     Token::DoubleEquals => "==",
     Token::TripleEquals => "===",
     Token::NotEquals => "!=",
-    Token::NotDoubleEquals => "!=",
+    Token::NotDoubleEquals => "!==",
 );
 
 fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -861,6 +861,39 @@ fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, K
     })
 }
 
+fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<SecondaryConstructor, KtError> {
+    //  modifiers "constructor" valueParameters (":" constructorDelegationCall)? block
+    s.expect_keyword("constructor")?;
+    let parameters = read_value_parameters(s)?;
+
+    let delegation_call = if s.optional_expect(Token::Colon) {
+        read_delegation_call(s)?
+    } else {
+        DelegationCall::None
+    };
+
+    let statements = read_block(s)?;
+
+    Ok(SecondaryConstructor {
+        modifiers,
+        parameters,
+        delegation_call,
+        statements,
+    })
+}
+
+fn read_delegation_call(s: &mut TokenCursor) -> Result<DelegationCall, KtError> {
+    let del = match s.read_token(0) {
+        Token::This => DelegationCall::This(read_value_arguments(s)?),
+        Token::Super => DelegationCall::Super(read_value_arguments(s)?),
+        _ => {
+            return s.make_error_expected_of(vec![Token::This, Token::Super]);
+        }
+    };
+
+    Ok(del)
+}
+
 fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
     let user_type = s.separated_by(Token::Dot, &read_simple_user_type)?;
     let ty = Type { annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
@@ -977,7 +1010,7 @@ fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 
     s.expect(Token::RightBrace)?;
 
-    Ok(ClassBody { enum_entries: None, members })
+    Ok(ClassBody { enum_entries: vec![], members })
 }
 
 fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
@@ -1002,10 +1035,9 @@ fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
         Token::Id(ref keyword) if keyword == "init" => {
             Member::AnonymousInitializer(read_anonymous_initializer(s)?)
         }
-        // TODO
-//        Token::Id(ref keyword) if keyword == "constructor" => {
-//            Member::AnonymousInitializer(read_secondary_constructor(s)?)
-//        }
+        Token::Id(ref keyword) if keyword == "constructor" => {
+            Member::SecondaryConstructor(read_secondary_constructor(s, modifiers)?)
+        }
         _ => {
             return s.make_error_expected_of(vec![
                 Token::Id(String::from("fun")),
@@ -1017,8 +1049,47 @@ fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
 }
 
 fn read_enum_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
-    always_err!()
+    s.expect(Token::LeftBrace)?;
+
+    let entries = s.separated_by(Token::Comma, &read_enum_entry)?;
+
+    s.optional_expect(Token::Comma);
+
+    let mut members = vec![];
+    s.many0(&expect_token(Token::Semicolon))?;
+
+    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+        members.push(read_member(s)?);
+        s.many0(&expect_token(Token::Semicolon))?;
+    }
+
+    s.expect(Token::RightBrace)?;
+
+    Ok(ClassBody { enum_entries: entries, members })
 }
+
+fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
+    let modifiers = read_modifiers(s)?;
+    let name = s.expect_id()?;
+
+    let mut value_arguments = vec![];
+    if s.read_token(0) == Token::LeftParen {
+        value_arguments =  read_value_arguments(s)?;
+    }
+
+    let mut class_body = None;
+    if s.read_token(0) == Token::LeftBrace {
+        class_body = Some(read_class_body(s)?);
+    }
+
+    Ok(EnumEntry {
+        modifiers,
+        name,
+        value_arguments,
+        class_body,
+    })
+}
+
 
 fn read_anonymous_initializer(s: &mut TokenCursor) -> Result<AnonymousInitializer, KtError> {
     s.expect_keyword("init")?;
@@ -1235,15 +1306,14 @@ mod tests {
         println!("{:?}", get_ast(
             r#"
             fun main(args: Array<String>) {
-                    val hello = 0;
-                    val world = 1;
-
-                    hello // (hello + world)
+                    val hello = 0
+                    val world = 1
+                    println(hello + world)
             }
             // Test
             class Test {
-                init{
-                    println("Here")
+                init {
+                    println(1)
                 }
 
                 constructor(x: Int) {
@@ -1350,6 +1420,10 @@ mod tests {
         println!("{:?}", get_ast("object MyList : ArrayList()", read_top_level_object));
         println!("{:?}", get_ast("class MyList<T> : ArrayList<T> { 1 + 2 } { val age = 5 }", read_top_level_object));
         println!("{:?}", get_ast("class Animal { val age = 5 }", read_top_level_object));
+        println!("{:?}", get_ast("enum class Color { RED, GREEN, BLUE; init{} }", read_top_level_object));
+        println!("{:?}", get_ast("enum class Color { RED, GREEN, BLUE,; init{} }", read_top_level_object));
+        println!("{:?}", get_ast("enum class Color { RED, GREEN, BLUE, }", read_top_level_object));
+        println!("{:?}", get_ast("enum class Color { RED(), GREEN(), BLUE() }", read_top_level_object));
     }
 }
 
