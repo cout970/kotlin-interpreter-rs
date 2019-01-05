@@ -115,6 +115,7 @@ pub enum Expr {
         expr: Arc<Expr>,
         ty: Type,
     },
+    If { cond: Arc<Expr>, if_true: Vec<Statement>, if_false: Option<Vec<Statement>> },
     Ref(String),
     Boolean(bool),
     Char(char),
@@ -123,6 +124,8 @@ pub enum Expr {
     Int(i32),
     Long(i64),
     Null,
+    Continue,
+    Break,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -132,7 +135,7 @@ pub enum ExprPostfix {
     AssertNonNull,
     ArrayAccess(Expr),
     FunCall(CallSuffix),
-    MemberAccess{ operator: String, next: Expr}
+    MemberAccess { operator: String, next: Expr },
 }
 
 #[derive(Clone, PartialEq, Debug)]

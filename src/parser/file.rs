@@ -388,7 +388,7 @@ fn read_expr_prefix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
 //    : "!"
 //    : annotations
 //    : labelDefinition
-//  ; TODO
+//  ; TODO add annotations and labels
     read_expr_prefix_operator(s)
 }
 
@@ -408,9 +408,18 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
 //  ;
 
     let suf = match s.read_token(0) {
-        Token::DoublePlus => {s.next(); ExprPostfix::Increment},
-        Token::DoubleMinus => {s.next(); ExprPostfix::Decrement},
-        Token::DoubleExclamationMark => {s.next(); ExprPostfix::AssertNonNull},
+        Token::DoublePlus => {
+            s.next();
+            ExprPostfix::Increment
+        }
+        Token::DoubleMinus => {
+            s.next();
+            ExprPostfix::Decrement
+        }
+        Token::DoubleExclamationMark => {
+            s.next();
+            ExprPostfix::AssertNonNull
+        }
         Token::LeftParen | Token::LeftAngleBracket | Token::LeftBrace => {
             ExprPostfix::FunCall(read_call_suffix(s)?)
         }
@@ -429,7 +438,7 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
             s.next();
             let next = read_expr_postfix_unary(s)?;
 
-            ExprPostfix::MemberAccess {operator: String::from(op), next }
+            ExprPostfix::MemberAccess { operator: String::from(op), next }
         }
         _ => {
             return s.make_error_expected_of(vec![
@@ -439,7 +448,7 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
                 Token::LeftParen, Token::LeftAngleBracket, Token::LeftBrace,
                 Token::LeftBracket,
                 Token::Dot, Token::QuestionMark, Token::SafeDot
-            ])
+            ]);
         }
     };
 
@@ -489,15 +498,58 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
                 Literal::Long(a) => Ok(Expr::Long(a)),
             }
         }
+        Token::If => read_expr_if(s),
+        Token::Throw => {
+            s.next();
+            read_expresion(s)
+        },
+        Token::Return => {
+            s.next();
+            s.optional(&read_expresion)
+        },
+        Token::Continue => {
+            s.next();
+            Expr::Continue
+        },
+        Token::Break => {
+            s.next();
+            Expr::Break
+        },
         _ => {
             s.make_error_expected_of(vec![
                 Token::Id(String::from("A variable")),
+                Token::Id(String::from("A literal (char, string, float, double, byte, short, int, long)")),
                 Token::True, Token::False,
-                Token::LitChar('c'),
-                Token::Null
+                Token::Null,
+                Token::If
             ])
         }
     }
+}
+
+fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    s.expect(Token::If)?;
+    s.expect(Token::LeftParen)?;
+    let cond = read_expresion(s)?;
+    s.expect(Token::RightParen)?;
+
+    let if_true = if s.read_token(0) == Token::LeftBrace {
+        read_block(s)?
+    } else {
+        vec![Statement::Expr(read_expresion(s)?)]
+    };
+
+    let mut if_false = None;
+
+    if s.optional_expect(Token::Else) {
+        if_false = if s.read_token(0) == Token::LeftBrace {
+            Some(read_block(s)?)
+        } else {
+            Some(vec![Statement::Expr(read_expresion(s)?)])
+        };
+    }
+
+    Ok(Expr::If { cond: Arc::new(cond), if_true, if_false })
 }
 
 // END Expr
@@ -1334,9 +1386,10 @@ mod tests {
                     println(y)
                 }
 
-                fun method(x: Int) : Int{
+                fun method(x: Int) : Int {
                     println(x)
-                    return x + 1
+                    if(x + 1 == 0) 1 else 2
+                    if(x + 1 == 0) {1} else {2}
                 }
             }     
             "#,
