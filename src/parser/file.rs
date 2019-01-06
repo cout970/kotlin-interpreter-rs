@@ -496,6 +496,7 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             Ok(Expr::Number(lit))
         }
         Token::If => read_expr_if(s),
+        Token::Try => read_expr_try(s),
         Token::Throw => {
             s.next();
             Ok(Expr::Throw(Arc::new(read_expresion(s)?)))
@@ -553,7 +554,7 @@ fn read_expr_string(s: &mut TokenCursor) -> Result<Expr, KtError> {
                     Token::StringVariable("A variable template like $a".into()),
                     Token::StringTemplateStart,
                     Token::StringEnd
-                ])
+                ]);
             }
         }
     }
@@ -587,6 +588,50 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
     Ok(Expr::If { cond: Arc::new(cond), if_true, if_false })
 }
 
+fn read_expr_try(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    s.expect(Token::Try)?;
+    let block = read_block(s)?;
+    let mut catch_blocks = vec![];
+
+    loop {
+        match s.read_token(0) {
+            Token::Id(ref it) if it == "catch" => {
+                s.next();
+                s.expect(Token::LeftParen)?;
+                let annotations = read_annotations(s)?;
+                let name = s.expect_id()?;
+                s.expect(Token::Colon)?;
+                let ty = read_user_type(s)?;
+                s.expect(Token::RightParen)?;
+                let block = read_block(s)?;
+
+                catch_blocks.push(CatchBlock {
+                    annotations,
+                    name,
+                    ty,
+                    block,
+                });
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+
+    let finally = match s.read_token(0) {
+        Token::Id(ref it) if it == "finally" => {
+            s.next();
+            Some(read_block(s)?)
+        }
+        _ => None
+    };
+
+    Ok(Expr::Try {
+        block,
+        catch_blocks,
+        finally,
+    })
+}
 // END Expr
 
 fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Function, KtError> {
@@ -745,7 +790,7 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
         // java.lang.Int
         Token::Id(_) => {
             let ty = if !receiver {
-                s.separated_by(Token::Dot, &read_simple_user_type)?
+                read_user_type(s)?
             } else {
                 let mut sum = vec![];
                 sum.push(read_simple_user_type(s)?);
@@ -795,6 +840,10 @@ fn read_parameter(s: &mut TokenCursor) -> Result<Parameter, KtError> {
     let ty = read_type(s)?;
 
     Ok(Parameter { name, ty })
+}
+
+fn read_user_type(s: &mut TokenCursor) -> Result<UserType, KtError> {
+    s.separated_by(Token::Dot, &read_simple_user_type)
 }
 
 fn read_simple_user_type(s: &mut TokenCursor) -> Result<SimpleUserType, KtError> {
@@ -992,7 +1041,7 @@ fn read_delegation_call(s: &mut TokenCursor) -> Result<DelegationCall, KtError> 
 }
 
 fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
-    let user_type = s.separated_by(Token::Dot, &read_simple_user_type)?;
+    let user_type = read_user_type(s)?;
     let ty = Type { annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
 
     if s.optional_expect_keyword("by") {
@@ -1049,6 +1098,7 @@ fn read_annotated_lambda(s: &mut TokenCursor) -> Result<AnnotatedLambda, KtError
 
 fn read_function_literal(s: &mut TokenCursor) -> Result<FunctionLiteral, KtError> {
     fn read_args(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
+        // TODO add variable destructuring
         let parameters = s.separated_by(Token::Comma, &read_variable_declaration)?;
         s.expect(Token::LeftArrow)?;
         Ok(parameters)
@@ -1431,6 +1481,13 @@ mod tests {
                     throw Exception()
                     continue
                     break
+                    try {
+                        null()
+                    } catch(e: NullPointerException) {
+                        e.printStackTrace()
+                    } finally {
+                        cleanUpResources()
+                    }
                     return null
                 }
             }     

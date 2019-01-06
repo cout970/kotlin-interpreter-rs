@@ -98,6 +98,7 @@ pub struct PropertySetter {
 // TODO add span to expressions
 type ExprVal = (Span, Expr);
 type ExprRef = Arc<(Span, Expr)>;
+type Block = Vec<Statement>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -122,7 +123,8 @@ pub enum Expr {
         ty: Type,
     },
     String(Vec<StringComponent>),
-    If { cond: Arc<Expr>, if_true: Vec<Statement>, if_false: Option<Vec<Statement>> },
+    If { cond: Arc<Expr>, if_true: Block, if_false: Option<Block> },
+    Try { block: Block, catch_blocks: Vec<CatchBlock>, finally: Option<Block> },
     Ref(String),
     Boolean(bool),
     Char(char),
@@ -139,6 +141,14 @@ pub enum StringComponent {
     Content(String),
     Variable(String),
     Template(Expr)
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct CatchBlock {
+    pub annotations: Vec<Annotation>,
+    pub name: String,
+    pub ty: Vec<SimpleUserType>,
+    pub block: Block,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -172,7 +182,7 @@ pub struct Function {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FunctionBody {
-    Block(Vec<Statement>),
+    Block(Block),
     Expression(Expr),
 }
 
@@ -251,12 +261,15 @@ pub struct Type {
     pub reference: Arc<TypeReference>,
 }
 
+pub type UserType = Vec<SimpleUserType>;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeReference {
     Function(FunctionType),
-    UserType(Vec<SimpleUserType>),
+    UserType(UserType),
     Nullable(Arc<TypeReference>),
 }
+
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct SimpleUserType {
