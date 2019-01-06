@@ -225,6 +225,14 @@ fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
     }
 }
 
+fn read_variable_decl(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
+    if let Token::LeftParen = s.read_token(0) {
+        read_multiple_variable_declarations(s)
+    } else {
+        Ok(vec![read_variable_declaration(s)?])
+    }
+}
+
 fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
     let name = s.expect_id()?;
     let declared_type = if s.optional_expect(Token::Colon) {
@@ -497,6 +505,13 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
         }
         Token::If => read_expr_if(s),
         Token::Try => read_expr_try(s),
+        Token::For => read_expr_for(s),
+        Token::While => read_expr_while(s),
+        // do {...} while(...) expression
+        Token::Do => read_expr_do_while(s),
+        Token::When => always_err!(),
+        Token::Object => read_object_literal(s),
+
         Token::Throw => {
             s.next();
             Ok(Expr::Throw(Arc::new(read_expresion(s)?)))
@@ -569,23 +584,99 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let cond = read_expresion(s)?;
     s.expect(Token::RightParen)?;
 
-    let if_true = if s.read_token(0) == Token::LeftBrace {
-        read_block(s)?
-    } else {
-        vec![Statement::Expr(read_expresion(s)?)]
-    };
+    let if_true = read_control_structure_body(s)?;
+
+    s.semi();
 
     let mut if_false = None;
 
     if s.optional_expect(Token::Else) {
-        if_false = if s.read_token(0) == Token::LeftBrace {
-            Some(read_block(s)?)
-        } else {
-            Some(vec![Statement::Expr(read_expresion(s)?)])
-        };
+        if_false = Some(read_control_structure_body(s)?);
     }
 
     Ok(Expr::If { cond: Arc::new(cond), if_true, if_false })
+}
+
+
+fn read_expr_for(s: &mut TokenCursor) -> Result<Expr, KtError> {
+//    : "for" "(" annotations (multipleVariableDeclarations | variableDeclarationEntry) "in" expression ")" controlStructureBody
+//    ;
+    s.expect(Token::For)?;
+    s.expect(Token::LeftParen)?;
+    let annotations = read_annotations(s)?;
+    let variables = read_variable_decl(s)?;
+    s.expect(Token::In)?;
+    let expr = Arc::new(read_expresion(s)?);
+    s.expect(Token::RightParen)?;
+    let body = read_control_structure_body(s)?;
+
+    Ok(Expr::For {
+        annotations,
+        variables,
+        expr,
+        body,
+    })
+}
+
+fn read_expr_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
+//    : "while" "(" expression ")" controlStructureBody
+//    ;
+    s.expect(Token::While)?;
+    s.expect(Token::LeftParen)?;
+    let expr = Arc::new(read_expresion(s)?);
+    s.expect(Token::RightParen)?;
+    let body = read_control_structure_body(s)?;
+
+    Ok(Expr::While {
+        expr,
+        body,
+    })
+}
+
+fn read_expr_do_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
+//    : "do" controlStructureBody "while" "(" expression ")"
+//    ;
+
+    s.expect(Token::Do)?;
+    let body = read_control_structure_body(s)?;
+    s.expect(Token::While)?;
+    s.expect(Token::LeftParen)?;
+    let expr = Arc::new(read_expresion(s)?);
+    s.expect(Token::RightParen)?;
+
+    Ok(Expr::DoWhile {
+        expr,
+        body,
+    })
+}
+
+fn read_object_literal(s: &mut TokenCursor) -> Result<Expr, KtError> {
+//    : "object" (":" delegationSpecifier{","})? classBody
+//    ;
+
+    s.expect(Token::Object)?;
+
+    let delegation_specifiers = if s.optional_expect(Token::Colon) {
+        s.separated_by(Token::Comma, &read_delegation_specifier_without_lambda)?
+    } else {
+        vec![]
+    };
+
+    let body = read_class_body(s)?;
+
+    Ok(Expr::Object {
+        delegation_specifiers,
+        body,
+    })
+}
+
+fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
+    if s.read_token(0) == Token::LeftBrace {
+        Ok(read_block(s)?)
+    } else {
+        // TODO support expression annotations?
+        Ok(vec![Statement::Expr(read_expresion(s)?)])
+    }
 }
 
 fn read_expr_try(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -895,9 +986,16 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 }
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
-    match s.optional(&read_declaration) {
-        Some(t) => Ok(Statement::Decl(t)),
-        None => Ok(Statement::Expr(read_expresion(s)?))
+    if s.read_token(0) == Token::Fun ||
+        s.read_token(0) == Token::Val ||
+        s.read_token(0) == Token::Var ||
+        s.read_token(0) == Token::Class ||
+        s.read_token(0) == Token::Interface ||
+        s.read_token(0) == Token::Object ||
+        s.read_token(0) == Token::TypeAlias {
+        Ok(Statement::Decl(read_declaration(s)?))
+    } else {
+        Ok(Statement::Expr(read_expresion(s)?))
     }
 }
 
@@ -1059,6 +1157,25 @@ fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier,
     }
 }
 
+fn read_delegation_specifier_without_lambda(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
+    let user_type = read_user_type(s)?;
+    let ty = Type { annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
+
+    if s.optional_expect_keyword("by") {
+        let expr = read_expresion(s)?;
+        Ok(DelegationSpecifier::DelegatedBy(ty, expr))
+    } else {
+        match s.optional(&read_call_suffix_without_lambda) {
+            Some(suffix) => {
+                Ok(DelegationSpecifier::FunctionCall(ty, suffix))
+            }
+            None => {
+                Ok(DelegationSpecifier::Type(ty))
+            }
+        }
+    }
+}
+
 fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
     let type_arguments = match s.read_token(0) {
         Token::LeftAngleBracket => read_type_arguments(s)?,
@@ -1079,6 +1196,24 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
         type_arguments,
         value_arguments,
         annotated_lambda,
+    })
+}
+
+fn read_call_suffix_without_lambda(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
+    let type_arguments = match s.read_token(0) {
+        Token::LeftAngleBracket => read_type_arguments(s)?,
+        _ => vec![]
+    };
+
+    let value_arguments = match s.read_token(0) {
+        Token::LeftParen => read_value_arguments(s)?,
+        _ => vec![]
+    };
+
+    Ok(CallSuffix {
+        type_arguments,
+        value_arguments,
+        annotated_lambda: None,
     })
 }
 
@@ -1455,9 +1590,9 @@ mod tests {
         println!("{:?}", get_ast(
             r#"
             fun main(args: Array<String>) {
-                    val hello = "Hello"
-                    val world = "World"
-                    println(hello + Test().method(world))
+                val hello = "Hello"
+                val world = "World"
+                println(hello + Test().method(world))
             }
 
             // Test
@@ -1476,7 +1611,7 @@ mod tests {
                 fun method(x: String) : Int? {
                     println(x)
                     if(x + 1 == 0) 1 else 2
-                    if(x + 1 == 0) {1} else {2}
+                    if(x + 1 == 0) { 1 } else { 2 }
                     return
                     throw Exception()
                     continue
@@ -1488,6 +1623,14 @@ mod tests {
                     } finally {
                         cleanUpResources()
                     }
+
+                    for(i in listOf(1,2,3)){}
+                    while(true){}
+                    do{}while(true)
+                    val a = object {}
+                    val b = object : List<Int> {}
+
+                    "Hello".let { println(it) }
                     return null
                 }
             }     

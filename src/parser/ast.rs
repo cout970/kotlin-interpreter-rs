@@ -1,6 +1,7 @@
 use std::sync::Arc;
-use crate::source_code::Span;
+
 use crate::Number;
+use crate::source_code::Span;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct KotlinFile {
@@ -96,9 +97,9 @@ pub struct PropertySetter {
 }
 
 // TODO add span to expressions
-type ExprVal = (Span, Expr);
-type ExprRef = Arc<(Span, Expr)>;
-type Block = Vec<Statement>;
+pub type ExprVal = (Span, Expr);
+pub type ExprRef = Arc<(Span, Expr)>;
+pub type Block = Vec<Statement>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -123,8 +124,34 @@ pub enum Expr {
         ty: Type,
     },
     String(Vec<StringComponent>),
-    If { cond: Arc<Expr>, if_true: Block, if_false: Option<Block> },
-    Try { block: Block, catch_blocks: Vec<CatchBlock>, finally: Option<Block> },
+    If {
+        cond: Arc<Expr>,
+        if_true: Block,
+        if_false: Option<Block>,
+    },
+    Try {
+        block: Block,
+        catch_blocks: Vec<CatchBlock>,
+        finally: Option<Block>,
+    },
+    For {
+        annotations: Vec<Annotation>,
+        variables: Vec<VariableDeclarationEntry>,
+        expr: Arc<Expr>,
+        body: Block,
+    },
+    While {
+        expr: Arc<Expr>,
+        body: Block,
+    },
+    DoWhile {
+        expr: Arc<Expr>,
+        body: Block,
+    },
+    Object{
+        delegation_specifiers: Vec<DelegationSpecifier>,
+        body: ClassBody,
+    },
     Ref(String),
     Boolean(bool),
     Char(char),
@@ -140,7 +167,7 @@ pub enum Expr {
 pub enum StringComponent {
     Content(String),
     Variable(String),
-    Template(Expr)
+    Template(Expr),
 }
 
 #[derive(Clone, PartialEq, Debug)]
