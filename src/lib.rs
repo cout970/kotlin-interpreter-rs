@@ -101,7 +101,7 @@ mod tests {
     fn get_code() {
         let ref mut codes: Vec<SourceCode> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);
-        assert_eq!(codes.len(), 264);
+        assert_eq!(codes.len(), 275);
 
         for code in codes {
             let ref mut s = get_code_cursor(code.clone());

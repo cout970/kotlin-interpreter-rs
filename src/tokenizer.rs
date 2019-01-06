@@ -4,9 +4,18 @@ use crate::source_code::SOURCE_CODE_PADDING;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
+#[derive(Eq, PartialEq, Copy, Clone)]
+enum TokenizerMode {
+    Normal,
+    String,
+    MultilineString,
+    StringTemplate,
+}
+
 pub struct CodeCursor {
     source: SourceCode,
     pos: u32,
+    mode: Vec<(TokenizerMode, i32)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,7 +23,12 @@ pub enum Token {
     Id(String),
     Literal(Literal),
     LitChar(char),
-    LitString(String),
+    StringStart,
+    StringEnd,
+    StringTemplateStart,
+    StringTemplateEnd,
+    StringContent(String),
+    StringVariable(String),
     // Signs
     Semicolon,
     LeftParen,
@@ -35,7 +49,7 @@ pub enum Token {
     DoubleDot,
     Comma,
     QuestionMark,
-    SafeDot, // ?.
+    SafeDot,
     ExclamationMark,
     DoubleExclamationMark,
     NotEquals,
@@ -127,24 +141,160 @@ impl CodeCursor {
         self.pos += 1;
     }
 
+    #[inline]
+    fn mode(&mut self) -> TokenizerMode {
+        self.mode.last().unwrap().0
+    }
+
+    #[inline]
+    fn brace_count(&mut self) -> i32 {
+        self.mode.last().unwrap().1
+    }
+
+    #[inline]
+    fn inc_brace(&mut self) {
+        self.mode.last_mut().unwrap().1 += 1;
+    }
+
+    #[inline]
+    fn dec_brace(&mut self) {
+        self.mode.last_mut().unwrap().1 -= 1;
+    }
+
     pub fn code_ref(&mut self) -> SourceCode {
         self.source.clone()
     }
 }
 
 pub fn get_code_cursor(input: SourceCode) -> CodeCursor {
-    CodeCursor { source: input, pos: 0 }
+    CodeCursor { source: input, pos: 0, mode: vec![(TokenizerMode::Normal, 0)] }
 }
 
 pub fn read_token(stream: &mut CodeCursor) -> Result<(Span, Token), KtError> {
-    trim_spaces(stream);
-    trim_comments(stream)?;
+    match stream.mode() {
+        TokenizerMode::String => read_string_token(stream, false),
+        TokenizerMode::MultilineString => read_string_token(stream, true),
+        _ => {
+            trim_spaces(stream);
+            trim_comments(stream)?;
+            let start = stream.pos;
+            let token = read_token_aux(stream)?;
+            let end = stream.pos;
+
+            Ok(((start, end), token))
+        }
+    }
+}
+
+fn read_string_token(stream: &mut CodeCursor, multiline: bool) -> Result<(Span, Token), KtError> {
+    // Examples of strings and the generated tokens:
+    // "Hello world!!!" => StrStart StrContent("hello world!!!") StrEnd
+    // "Hello $world!!!" => StrStart StrContent("hello ") StrVariable("world") StrContent("!!!") StrEnd
+    // "Hello ${world}!!!" => StrStart StrContent("hello ") StrTemplateStart Id("world") StrTemplateEnd StrContent("!!!") StrEnd
     let start = stream.pos;
-    let token = read_token_aux(stream)?;
+
+    let tk = match stream.read_char(0) {
+        '"' => {
+            if multiline {
+                stream.next();
+                stream.next();
+            }
+            stream.next();
+            stream.mode.pop();
+            Token::StringEnd
+        }
+        '$' => {
+            if stream.read_char(1) == '{' {
+                stream.next();
+                stream.next();
+                stream.mode.push((TokenizerMode::StringTemplate, 1));
+                Token::StringTemplateStart
+            } else {
+                read_string_token_variable(stream)?
+            }
+        }
+        _ => {
+            read_string_token_content(stream, multiline)?
+        }
+    };
+
     let end = stream.pos;
 
-    Ok(((start, end), token))
+    Ok(((start, end), tk))
 }
+
+fn read_string_token_variable(stream: &mut CodeCursor) -> Result<Token, KtError> {
+    assert_eq!(stream.read_char(0), '$');
+    stream.next();
+
+    let mut content = String::new();
+
+    loop {
+        let c0 = stream.read_char(0);
+
+        if !c0.is_alphanumeric() {
+            break;
+        }
+
+        content.push(c0);
+        stream.next();
+    }
+
+    Ok(Token::StringVariable(content))
+}
+
+fn read_string_token_content(stream: &mut CodeCursor, multiline: bool) -> Result<Token, KtError> {
+    let mut content = String::new();
+
+    loop {
+        let c0 = stream.read_char(0);
+        let c1 = stream.read_char(1);
+        let c2 = stream.read_char(2);
+
+        if multiline {
+            if c0 == '"' && c1 == '"' && c2 == '"' {
+                break;
+            }
+        } else {
+            if c0 == '"' {
+                break;
+            }
+        }
+
+        if c0 == '\0' {
+            break;
+        }
+
+        if !multiline && c0 == '\\' {
+            let code = match c1 {
+                '"' => '"',
+                '\'' => '\'',
+                '0' => '\0',
+                't' => '\t',
+                'r' => '\r',
+                'n' => '\n',
+                _ => c1
+            };
+
+            content.push(code);
+            stream.next();
+            stream.next();
+            continue;
+        }
+
+        if c0 == '$' {
+            if c1 == '{' || c1.is_alphabetic() {
+                break;
+            }
+        }
+
+        content.push(c0);
+        stream.next();
+    }
+
+    Ok(Token::StringContent(content))
+}
+
 
 pub fn read_all_tokens(stream: &mut CodeCursor) -> Result<Vec<(Span, Token)>, KtError> {
     let mut tks = vec![];
@@ -176,8 +326,19 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         b';' => Token::Semicolon,
         b'(' => Token::LeftParen,
         b')' => Token::RightParen,
-        b'{' => Token::LeftBrace,
-        b'}' => Token::RightBrace,
+        b'{' => {
+            stream.inc_brace();
+            Token::LeftBrace
+        }
+        b'}' => {
+            stream.dec_brace();
+            if stream.mode() == TokenizerMode::StringTemplate && stream.brace_count() == 0 {
+                stream.mode.pop();
+                Token::StringTemplateEnd
+            } else {
+                Token::RightBrace
+            }
+        }
         b'[' => Token::LeftBracket,
         b']' => Token::RightBracket,
         b'<' => match c1 {
@@ -327,9 +488,18 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             }
             _ => Token::Pipe
         },
-        b'"' => { return Ok(read_string(stream)?); }
+        b'"' => {
+            if c1 == b'"' && stream.read_u8(2) == b'"' {
+                stream.mode.push((TokenizerMode::MultilineString, 0));
+                stream.next();
+                stream.next();
+            } else {
+                stream.mode.push((TokenizerMode::String, 0));
+            }
+            Token::StringStart
+        }
         b'\'' => { return Ok(read_char(stream)?); }
-        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier(stream, true)); }
+        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier_or_keyword(stream)); }
         b'`' => { return read_escaped_identifier(stream); }
         b'0'..=b'9' => { return Ok(read_number(stream)?); }
         _ => return Err(KtError::Tokenizer {
@@ -347,7 +517,18 @@ fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let start = stream.pos;
     assert_eq!(stream.read_u8(0), b'`');
     stream.next();
-    let tk = read_identifier(stream, false);
+
+    let mut id = String::new();
+
+    loop {
+        let c = stream.read_char(0);
+        if c == '`' || c == '\0' || c == '\n' {
+            break;
+        }
+
+        id.push(c);
+        stream.next();
+    }
 
     if stream.read_u8(0) != b'`' {
         return Err(KtError::Tokenizer {
@@ -358,10 +539,10 @@ fn read_escaped_identifier(stream: &mut CodeCursor) -> Result<Token, KtError> {
     }
     stream.next();
 
-    Ok(tk)
+    Ok(Token::Id(id))
 }
 
-fn read_identifier(stream: &mut CodeCursor, allow_keywords: bool) -> Token {
+fn read_identifier_or_keyword(stream: &mut CodeCursor) -> Token {
     let mut id = String::new();
 
     loop {
@@ -373,103 +554,44 @@ fn read_identifier(stream: &mut CodeCursor, allow_keywords: bool) -> Token {
         stream.next();
     }
 
-    if allow_keywords {
-        match &id[..] {
-            "as" => {
-                if stream.read_u8(0) == b'?' {
-                    stream.next();
-                    Token::AsQuestionMark
-                } else {
-                    Token::As
-                }
+    match &id[..] {
+        "as" => {
+            if stream.read_u8(0) == b'?' {
+                stream.next();
+                Token::AsQuestionMark
+            } else {
+                Token::As
             }
-            "as?" => Token::AsQuestionMark,
-            "break" => Token::Break,
-            "class" => Token::Class,
-            "continue" => Token::Continue,
-            "do" => Token::Do,
-            "else" => Token::Else,
-            "false" => Token::False,
-            "for" => Token::For,
-            "fun" => Token::Fun,
-            "if" => Token::If,
-            "in" => Token::In,
-            "interface" => Token::Interface,
-            "is" => Token::Is,
-            "null" => Token::Null,
-            "object" => Token::Object,
-            "package" => Token::Package,
-            "return" => Token::Return,
-            "super" => Token::Super,
-            "this" => Token::This,
-            "throw" => Token::Throw,
-            "true" => Token::True,
-            "try" => Token::Try,
-            "typealias" => Token::TypeAlias,
-            "val" => Token::Val,
-            "var" => Token::Var,
-            "when" => Token::When,
-            "while" => Token::While,
-            _ => Token::Id(id)
         }
-    } else {
-        Token::Id(id)
+        "as?" => Token::AsQuestionMark,
+        "break" => Token::Break,
+        "class" => Token::Class,
+        "continue" => Token::Continue,
+        "do" => Token::Do,
+        "else" => Token::Else,
+        "false" => Token::False,
+        "for" => Token::For,
+        "fun" => Token::Fun,
+        "if" => Token::If,
+        "in" => Token::In,
+        "interface" => Token::Interface,
+        "is" => Token::Is,
+        "null" => Token::Null,
+        "object" => Token::Object,
+        "package" => Token::Package,
+        "return" => Token::Return,
+        "super" => Token::Super,
+        "this" => Token::This,
+        "throw" => Token::Throw,
+        "true" => Token::True,
+        "try" => Token::Try,
+        "typealias" => Token::TypeAlias,
+        "val" => Token::Val,
+        "var" => Token::Var,
+        "when" => Token::When,
+        "while" => Token::While,
+        _ => Token::Id(id)
     }
-}
-
-// TODO add string templates
-fn read_string(stream: &mut CodeCursor) -> Result<Token, KtError> {
-    let triple = stream.read_char(0) == '"' && stream.read_char(1) == '"' && stream.read_char(2) == '"';
-    let mut chars = vec![];
-    let start = stream.pos;
-
-    if triple {
-        stream.next();
-        stream.next();
-        stream.next();
-        loop {
-            let c0 = stream.read_u8(0);
-            let c1 = stream.read_u8(1);
-            let c2 = stream.read_u8(2);
-
-            if c0 == b'"' && c1 == b'"' && c2 == b'"' {
-                stream.next();
-                stream.next();
-                stream.next();
-                break;
-            } else if c0 == 0 {
-                return Err(KtError::Tokenizer {
-                    code: stream.code_ref(),
-                    span: (start, stream.pos),
-                    info: TokenizerError::ExpectedEndOfString,
-                });
-            }
-
-            chars.push(c0);
-            stream.next()
-        }
-    } else {
-        stream.next();
-        loop {
-            let c = stream.read_u8(0);
-
-            if c == b'"' {
-                stream.next();
-                break;
-            } else if c == b'\n' {
-                return Err(KtError::Tokenizer {
-                    code: stream.code_ref(),
-                    span: (start, stream.pos),
-                    info: TokenizerError::ExpectedEndOfString,
-                });
-            }
-
-            chars.push(c);
-            stream.next()
-        }
-    }
-
-    Ok(Token::LitString(String::from_utf8_lossy(&chars).to_string()))
 }
 
 fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
@@ -508,6 +630,8 @@ fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
                 });
             }
         };
+
+        stream.next();
     } else {
         c = c0;
     }
@@ -762,8 +886,8 @@ mod tests {
     #[test]
     fn check_basic_tokens() {
         let ref mut s = get_code_cursor(from_str("\
-; ( ) { } [ ] < > @ : :: $ . .. , ?: ? ! -> .. + ++ - -- * / % = == === != !== += -= *= /= %= & && | ||
-  "));
+; ( ) { } [ ] < > @ : :: $ . .. , ?: ? ! -> .. + ++ - -- * / % = == === != !== += -= *= /= %= & && | ||\
+"));
 
         let expected = vec![
             Token::Semicolon, Token::LeftParen, Token::RightParen, Token::LeftBrace, Token::RightBrace,
@@ -774,7 +898,60 @@ mod tests {
             Token::Asterisk, Token::Slash, Token::Percent, Token::Equals, Token::DoubleEquals,
             Token::TripleEquals, Token::NotEquals, Token::NotDoubleEquals, Token::PlusEquals,
             Token::Minus, Token::Equals, Token::TimesEquals, Token::DivEquals, Token::ModEquals,
-            Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe, Token::Semicolon,
+            Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe,
+            Token::EOF,
+        ];
+
+        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+
+        assert_eq!(expected, found);
+    }
+
+    #[test]
+    fn check_string_variables() {
+        let ref mut s = get_code_cursor(from_str("\"Hello $world!!!\""));
+
+        let expected = vec![
+            Token::StringStart, Token::StringContent(String::from("Hello ")),
+            Token::StringVariable(String::from("world")),
+            Token::StringContent(String::from("!!!")), Token::StringEnd,
+            Token::EOF,
+        ];
+
+        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+
+        assert_eq!(expected, found);
+    }
+
+    #[test]
+    fn check_string_templates() {
+        let ref mut s = get_code_cursor(from_str("\"Hello ${world}!!!\""));
+
+        let expected = vec![
+            Token::StringStart, Token::StringContent(String::from("Hello ")),
+            Token::StringTemplateStart, Token::Id(String::from("world")), Token::StringTemplateEnd,
+            Token::StringContent(String::from("!!!")), Token::StringEnd,
+            Token::EOF,
+        ];
+
+        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+
+        assert_eq!(expected, found);
+    }
+
+    #[test]
+    fn check_string_complex_templates() {
+        let ref mut s = get_code_cursor(from_str("\"\"\"Hello ${println(\"Real ${1+2} Hello\")}!!!\"\"\""));
+
+        let expected = vec![
+            Token::StringStart, Token::StringContent(String::from("Hello ")), Token::StringTemplateStart,    // "Hello ${
+            Token::Id(String::from("println")), Token::LeftParen,                                            //     println(
+            Token::StringStart, Token::StringContent(String::from("Real ")), Token::StringTemplateStart,     //     "Real ${
+            Token::Literal(Literal::Int(1)), Token::Plus, Token::Literal(Literal::Int(2)),                     //           1+2
+            Token::StringTemplateEnd,                                                                          //      }
+            Token::StringContent(String::from(" Hello")), Token::StringEnd, Token::RightParen,               //     Hello")
+            Token::StringTemplateEnd,                                                                          // }
+            Token::StringContent(String::from("!!!")), Token::StringEnd,                                     // !!!"
             Token::EOF,
         ];
 
@@ -804,12 +981,6 @@ mod tests {
         assert_eq!(Token::Literal(Literal::Int(0x0)), read_single_token("0x0"));
         assert_eq!(Token::Literal(Literal::Int(1_000)), read_single_token("1_000"));
         assert_eq!(Token::Literal(Literal::Int(0b010101)), read_single_token("0b010101"));
-    }
-
-    #[test]
-    fn check_string() {
-        assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"abc\""));
-        assert_eq!(Token::LitString(String::from("abc")), read_single_token("\"\"\"abc\"\"\""));
     }
 
     #[test]

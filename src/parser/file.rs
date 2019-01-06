@@ -499,22 +499,22 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             }
         }
         Token::If => read_expr_if(s),
-        Token::Throw => {
-            s.next();
-            read_expresion(s)
-        },
-        Token::Return => {
-            s.next();
-            s.optional(&read_expresion)
-        },
-        Token::Continue => {
-            s.next();
-            Expr::Continue
-        },
-        Token::Break => {
-            s.next();
-            Expr::Break
-        },
+//        Token::Throw => {
+//            s.next();
+//            read_expresion(s)
+//        },
+//        Token::Return => {
+//            s.next();
+//            s.optional(&read_expresion)
+//        },
+//        Token::Continue => {
+//            s.next();
+//            Expr::Continue
+//        },
+//        Token::Break => {
+//            s.next();
+//            Expr::Break
+//        },
         _ => {
             s.make_error_expected_of(vec![
                 Token::Id(String::from("A variable")),

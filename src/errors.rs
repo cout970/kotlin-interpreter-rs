@@ -139,7 +139,12 @@ impl Display for Token {
             Token::Id(it) => { write!(f, "{}", it)?; }
             Token::Literal(it) => { write!(f, "{}", it)?; }
             Token::LitChar(it) => { write!(f, "{}", it)?; }
-            Token::LitString(it) => { write!(f, "{}", it)?; }
+            Token::StringStart => { write!(f, "\"")?; }
+            Token::StringEnd => { write!(f, "\"")?; }
+            Token::StringTemplateStart => { write!(f, "${{")?; }
+            Token::StringTemplateEnd => { write!(f, "}}")?; }
+            Token::StringContent(it) => { write!(f, "{}", it)?; }
+            Token::StringVariable(it) => { write!(f, "${}", it)?; }
             Token::Semicolon => { write!(f, ";")?; }
             Token::LeftParen => { write!(f, "(")?; }
             Token::RightParen => { write!(f, ")")?; }
