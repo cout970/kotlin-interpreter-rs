@@ -244,6 +244,7 @@ fn read_string_token_variable(stream: &mut CodeCursor) -> Result<Token, KtError>
 }
 
 fn read_string_token_content(stream: &mut CodeCursor, multiline: bool) -> Result<Token, KtError> {
+    let start = stream.pos;
     let mut content = String::new();
 
     loop {
@@ -262,7 +263,11 @@ fn read_string_token_content(stream: &mut CodeCursor, multiline: bool) -> Result
         }
 
         if c0 == '\0' {
-            break;
+            return Err(KtError::Tokenizer {
+                code: stream.code_ref(),
+                span: (start, stream.pos),
+                info: TokenizerError::ExpectedEndOfString
+            });
         }
 
         if !multiline && c0 == '\\' {
