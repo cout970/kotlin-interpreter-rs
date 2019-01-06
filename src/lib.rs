@@ -31,6 +31,16 @@ pub mod parser;
 // - https://play.kotlinlang.org
 
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum Number {
+    Double(f64),
+    Float(f32),
+    Byte(i8),
+    Short(i16),
+    Int(i32),
+    Long(i64),
+}
+
 fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
     let file = File::open(path);
     let mut file = if let Ok(f) = file { f } else { return; };

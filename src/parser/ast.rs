@@ -1,4 +1,6 @@
 use std::sync::Arc;
+use crate::source_code::Span;
+use crate::Number;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct KotlinFile {
@@ -93,6 +95,10 @@ pub struct PropertySetter {
     pub body: Option<FunctionBody>,
 }
 
+// TODO add span to expressions
+type ExprVal = (Span, Expr);
+type ExprRef = Arc<(Span, Expr)>;
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
     Chain {
@@ -119,11 +125,10 @@ pub enum Expr {
     Ref(String),
     Boolean(bool),
     Char(char),
-    Double(f64),
-    Float(f32),
-    Int(i32),
-    Long(i64),
+    Number(Number),
     Null,
+    Throw(Arc<Expr>),
+    Return(Option<Arc<Expr>>),
     Continue,
     Break,
 }

@@ -6,7 +6,6 @@ use crate::errors::ParserError;
 use crate::map;
 use crate::parser::ast::*;
 use crate::parser::TokenCursor;
-use crate::tokenizer::Literal;
 use crate::tokenizer::Token;
 
 macro_rules! create_operator_fun {
@@ -485,43 +484,38 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             s.next();
             Ok(Expr::Null)
         }
-        Token::LitChar(a) => {
+        Token::Char(a) => {
             s.next();
             Ok(Expr::Char(a))
         }
-        Token::Literal(lit) => {
+        Token::Number(lit) => {
             s.next();
-            match lit {
-                Literal::Double(a) => Ok(Expr::Double(a)),
-                Literal::Float(a) => Ok(Expr::Float(a)),
-                Literal::Int(a) => Ok(Expr::Int(a)),
-                Literal::Long(a) => Ok(Expr::Long(a)),
-            }
+            Ok(Expr::Number(lit))
         }
         Token::If => read_expr_if(s),
-//        Token::Throw => {
-//            s.next();
-//            read_expresion(s)
-//        },
-//        Token::Return => {
-//            s.next();
-//            s.optional(&read_expresion)
-//        },
-//        Token::Continue => {
-//            s.next();
-//            Expr::Continue
-//        },
-//        Token::Break => {
-//            s.next();
-//            Expr::Break
-//        },
+        Token::Throw => {
+            s.next();
+            Ok(Expr::Throw(Arc::new(read_expresion(s)?)))
+        },
+        Token::Return => {
+            s.next();
+            Ok(Expr::Return(s.optional(&read_expresion).map(Arc::new)))
+        },
+        Token::Continue => {
+            s.next();
+            Ok(Expr::Continue)
+        },
+        Token::Break => {
+            s.next();
+            Ok(Expr::Break)
+        },
         _ => {
             s.make_error_expected_of(vec![
                 Token::Id(String::from("A variable")),
                 Token::Id(String::from("A literal (char, string, float, double, byte, short, int, long)")),
                 Token::True, Token::False,
                 Token::Null,
-                Token::If
+                Token::If, Token::Throw, Token::Return, Token::Continue, Token::Break
             ])
         }
     }
@@ -1368,8 +1362,8 @@ mod tests {
         println!("{:?}", get_ast(
             r#"
             fun main(args: Array<String>) {
-                    val hello = 0
-                    val world = 1
+                    val hello = 1 // "Hello"
+                    val world = 2 // "World"
                     println(hello + Test().method(world))
             }
 
@@ -1386,10 +1380,15 @@ mod tests {
                     println(y)
                 }
 
-                fun method(x: Int) : Int {
+                fun method(x: String) : Int? {
                     println(x)
                     if(x + 1 == 0) 1 else 2
                     if(x + 1 == 0) {1} else {2}
+                    return
+                    throw Exception()
+                    continue
+                    break
+                    return null
                 }
             }     
             "#,

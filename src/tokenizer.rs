@@ -3,6 +3,7 @@ use crate::errors::TokenizerError;
 use crate::source_code::SOURCE_CODE_PADDING;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
+use crate::Number;
 
 #[derive(Eq, PartialEq, Copy, Clone)]
 enum TokenizerMode {
@@ -21,8 +22,8 @@ pub struct CodeCursor {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Id(String),
-    Literal(Literal),
-    LitChar(char),
+    Number(Number),
+    Char(char),
     StringStart,
     StringEnd,
     StringTemplateStart,
@@ -111,13 +112,6 @@ pub enum Token {
     EOF,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Literal {
-    Double(f64),
-    Float(f32),
-    Int(i32),
-    Long(i64),
-}
 
 impl CodeCursor {
     #[inline]
@@ -651,7 +645,7 @@ fn read_char(stream: &mut CodeCursor) -> Result<Token, KtError> {
 
     stream.next(); // skip '
 
-    Ok(Token::LitChar(c))
+    Ok(Token::Char(c))
 }
 
 fn read_number(stream: &mut CodeCursor) -> Result<Token, KtError> {
@@ -681,7 +675,7 @@ fn read_number(stream: &mut CodeCursor) -> Result<Token, KtError> {
                 }
                 _ => {
                     stream.next();
-                    Token::Literal(Literal::Int(0))
+                    Token::Number(Number::Int(0))
                 }
             }
         }
@@ -708,12 +702,12 @@ fn collect_chars<F: FnMut(char) -> bool>(stream: &mut CodeCursor, mut pred: F) -
 
 fn read_hex(stream: &mut CodeCursor) -> Token {
     let res = collect_chars(stream, |c: char| c.is_ascii_hexdigit());
-    Token::Literal(from_int_chars(16, &res))
+    Token::Number(from_int_chars(16, &res))
 }
 
 fn read_binary(stream: &mut CodeCursor) -> Token {
     let res = collect_chars(stream, |c: char| c == '0' || c == '1');
-    Token::Literal(from_int_chars(2, &res))
+    Token::Number(from_int_chars(2, &res))
 }
 
 fn read_float_or_int(stream: &mut CodeCursor) -> Token {
@@ -744,13 +738,13 @@ fn read_float_or_int(stream: &mut CodeCursor) -> Token {
             exp = s;
         }
 
-        return Token::Literal(from_float_chars(&pre_dot, &post_dot, &exp));
+        return Token::Number(from_float_chars(&pre_dot, &post_dot, &exp));
     }
 
-    Token::Literal(from_int_chars(10, &pre_dot))
+    Token::Number(from_int_chars(10, &pre_dot))
 }
 
-fn from_int_chars(radix: u32, digits: &str) -> Literal {
+fn from_int_chars(radix: u32, digits: &str) -> Number {
     let chars = digits.chars().filter(|c| *c != '_');
     let mut value: i64 = 0;
 
@@ -759,13 +753,13 @@ fn from_int_chars(radix: u32, digits: &str) -> Literal {
     }
 
     if value as u64 & 0xFFFF_FFFF_0000_0000u64 != 0 {
-        Literal::Long(value)
+        Number::Long(value)
     } else {
-        Literal::Int(value as i32)
+        Number::Int(value as i32)
     }
 }
 
-fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Literal {
+fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Number {
     let pre_dot_chars = pre_dot.chars().filter(|c| *c != '_');
     let mut pre_dot_value: f64 = 0.0;
 
@@ -796,7 +790,7 @@ fn from_float_chars(pre_dot: &str, post_dot: &str, exp: &str) -> Literal {
         value *= 10.0f64.powf(exp_value * sign);
     }
 
-    Literal::Float(value as f32)
+    Number::Float(value as f32)
 }
 
 fn digit_to_value(c: char) -> u32 {
@@ -952,7 +946,7 @@ mod tests {
             Token::StringStart, Token::StringContent(String::from("Hello ")), Token::StringTemplateStart,    // "Hello ${
             Token::Id(String::from("println")), Token::LeftParen,                                            //     println(
             Token::StringStart, Token::StringContent(String::from("Real ")), Token::StringTemplateStart,     //     "Real ${
-            Token::Literal(Literal::Int(1)), Token::Plus, Token::Literal(Literal::Int(2)),                     //           1+2
+            Token::Number(Number::Int(1)), Token::Plus, Token::Number(Number::Int(2)),                     //           1+2
             Token::StringTemplateEnd,                                                                          //      }
             Token::StringContent(String::from(" Hello")), Token::StringEnd, Token::RightParen,               //     Hello")
             Token::StringTemplateEnd,                                                                          // }
@@ -968,31 +962,31 @@ mod tests {
 
     #[test]
     fn check_float() {
-        assert_eq!(Token::Literal(Literal::Float(12345.12345)), read_single_token("12345.12345"));
-        assert_eq!(Token::Literal(Literal::Float(1.0)), read_single_token("1.0"));
-        assert_eq!(Token::Literal(Literal::Float(0.0)), read_single_token("0.0"));
-        assert_eq!(Token::Literal(Literal::Float(0.2e1)), read_single_token("0.2e1"));
-        assert_eq!(Token::Literal(Literal::Float(1.2e1)), read_single_token("1.2e1"));
-        assert_eq!(Token::Literal(Literal::Float(1.2e+1)), read_single_token("1.2e+1"));
-        assert_eq!(Token::Literal(Literal::Float(1.2e-1)), read_single_token("1.2e-1"));
+        assert_eq!(Token::Number(Number::Float(12345.12345)), read_single_token("12345.12345"));
+        assert_eq!(Token::Number(Number::Float(1.0)), read_single_token("1.0"));
+        assert_eq!(Token::Number(Number::Float(0.0)), read_single_token("0.0"));
+        assert_eq!(Token::Number(Number::Float(0.2e1)), read_single_token("0.2e1"));
+        assert_eq!(Token::Number(Number::Float(1.2e1)), read_single_token("1.2e1"));
+        assert_eq!(Token::Number(Number::Float(1.2e+1)), read_single_token("1.2e+1"));
+        assert_eq!(Token::Number(Number::Float(1.2e-1)), read_single_token("1.2e-1"));
     }
 
     #[test]
     fn check_int() {
-        assert_eq!(Token::Literal(Literal::Int(0)), read_single_token("0"));
-        assert_eq!(Token::Literal(Literal::Int(1)), read_single_token("1"));
-        assert_eq!(Token::Literal(Literal::Int(123445)), read_single_token("123445"));
-        assert_eq!(Token::Literal(Literal::Int(0x1)), read_single_token("0x1"));
-        assert_eq!(Token::Literal(Literal::Int(0x0)), read_single_token("0x0"));
-        assert_eq!(Token::Literal(Literal::Int(1_000)), read_single_token("1_000"));
-        assert_eq!(Token::Literal(Literal::Int(0b010101)), read_single_token("0b010101"));
+        assert_eq!(Token::Number(Number::Int(0)), read_single_token("0"));
+        assert_eq!(Token::Number(Number::Int(1)), read_single_token("1"));
+        assert_eq!(Token::Number(Number::Int(123445)), read_single_token("123445"));
+        assert_eq!(Token::Number(Number::Int(0x1)), read_single_token("0x1"));
+        assert_eq!(Token::Number(Number::Int(0x0)), read_single_token("0x0"));
+        assert_eq!(Token::Number(Number::Int(1_000)), read_single_token("1_000"));
+        assert_eq!(Token::Number(Number::Int(0b010101)), read_single_token("0b010101"));
     }
 
     #[test]
     #[ignore]
     fn check_char() {
-        assert_eq!(Token::LitChar('a'), read_single_token("'a'"));
-        assert_eq!(Token::LitChar('a'), read_single_token("\\u61"));
-        assert_eq!(Token::LitChar('a'), read_single_token("\\0141"));
+        assert_eq!(Token::Char('a'), read_single_token("'a'"));
+        assert_eq!(Token::Char('a'), read_single_token("\\u61"));
+        assert_eq!(Token::Char('a'), read_single_token("\\0141"));
     }
 }

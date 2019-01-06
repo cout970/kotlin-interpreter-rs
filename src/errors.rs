@@ -8,8 +8,8 @@ use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::source_code::to_str;
-use crate::tokenizer::Literal;
 use crate::tokenizer::Token;
+use crate::Number;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
@@ -137,8 +137,8 @@ impl Display for Token {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             Token::Id(it) => { write!(f, "{}", it)?; }
-            Token::Literal(it) => { write!(f, "{}", it)?; }
-            Token::LitChar(it) => { write!(f, "{}", it)?; }
+            Token::Number(it) => { write!(f, "{}", it)?; }
+            Token::Char(it) => { write!(f, "{}", it)?; }
             Token::StringStart => { write!(f, "\"")?; }
             Token::StringEnd => { write!(f, "\"")?; }
             Token::StringTemplateStart => { write!(f, "${{")?; }
@@ -228,13 +228,15 @@ impl Display for Token {
 }
 
 
-impl Display for Literal {
+impl Display for Number {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            Literal::Double(it) => { write!(f, "{}", it) }
-            Literal::Float(it) => { write!(f, "{}", it) }
-            Literal::Int(it) => { write!(f, "{}", it) }
-            Literal::Long(it) => { write!(f, "{}", it) }
+            Number::Double(it) => { write!(f, "{}", it) }
+            Number::Float(it) => { write!(f, "{}f", it) }
+            Number::Byte(it) => { write!(f, "{}", it) }
+            Number::Short(it) => { write!(f, "{}", it) }
+            Number::Int(it) => { write!(f, "{}", it) }
+            Number::Long(it) => { write!(f, "{}L", it) }
         }
     }
 }
