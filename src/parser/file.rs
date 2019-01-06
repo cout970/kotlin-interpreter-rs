@@ -484,6 +484,9 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             s.next();
             Ok(Expr::Null)
         }
+        Token::StringStart => {
+            read_expr_string(s)
+        }
         Token::Char(a) => {
             s.next();
             Ok(Expr::Char(a))
@@ -496,19 +499,19 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
         Token::Throw => {
             s.next();
             Ok(Expr::Throw(Arc::new(read_expresion(s)?)))
-        },
+        }
         Token::Return => {
             s.next();
             Ok(Expr::Return(s.optional(&read_expresion).map(Arc::new)))
-        },
+        }
         Token::Continue => {
             s.next();
             Ok(Expr::Continue)
-        },
+        }
         Token::Break => {
             s.next();
             Ok(Expr::Break)
-        },
+        }
         _ => {
             s.make_error_expected_of(vec![
                 Token::Id(String::from("A variable")),
@@ -519,6 +522,44 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
             ])
         }
     }
+}
+
+fn read_expr_string(s: &mut TokenCursor) -> Result<Expr, KtError> {
+    s.expect(Token::StringStart)?;
+    let mut components = vec![];
+
+    loop {
+        match s.read_token(0) {
+            Token::StringContent(it) => {
+                s.next();
+                components.push(StringComponent::Content(it));
+            }
+            Token::StringVariable(it) => {
+                s.next();
+                components.push(StringComponent::Variable(it));
+            }
+            Token::StringTemplateStart => {
+                s.next();
+                let expr = read_expresion(s)?;
+                s.expect(Token::StringTemplateEnd)?;
+                components.push(StringComponent::Template(expr));
+            }
+            Token::StringEnd => {
+                break;
+            }
+            _ => {
+                return s.make_error_expected_of(vec![
+                    Token::StringContent("The content of a string".into()),
+                    Token::StringVariable("A variable template like $a".into()),
+                    Token::StringTemplateStart,
+                    Token::StringEnd
+                ])
+            }
+        }
+    }
+    s.expect(Token::StringEnd)?;
+
+    Ok(Expr::String(components))
 }
 
 fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -1287,6 +1328,7 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
         match s.read_token(0) {
             Token::Id(name) => {
                 s.next();
+                // TODO add enum modifier
                 match name.as_str() {
                     /*"abstract" |*/ /*"final" |*/ "enum" | /*"open" |*/ "annotation" | "sealed" | "data" | // classModifier
                     "override" | "open" | "final" | "abstract" | "lateinit" | // memberModifier
@@ -1337,6 +1379,7 @@ fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> 
 
 fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
     let names = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
+    // TODO
     Ok(Annotation { names })
 }
 
@@ -1362,8 +1405,8 @@ mod tests {
         println!("{:?}", get_ast(
             r#"
             fun main(args: Array<String>) {
-                    val hello = 1 // "Hello"
-                    val world = 2 // "World"
+                    val hello = "Hello"
+                    val world = "World"
                     println(hello + Test().method(world))
             }
 

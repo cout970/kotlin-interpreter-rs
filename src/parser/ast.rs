@@ -121,6 +121,7 @@ pub enum Expr {
         expr: Arc<Expr>,
         ty: Type,
     },
+    String(Vec<StringComponent>),
     If { cond: Arc<Expr>, if_true: Vec<Statement>, if_false: Option<Vec<Statement>> },
     Ref(String),
     Boolean(bool),
@@ -131,6 +132,13 @@ pub enum Expr {
     Return(Option<Arc<Expr>>),
     Continue,
     Break,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum StringComponent {
+    Content(String),
+    Variable(String),
+    Template(Expr)
 }
 
 #[derive(Clone, PartialEq, Debug)]
