@@ -148,7 +148,11 @@ pub enum Expr {
         expr: Arc<Expr>,
         body: Block,
     },
-    Object{
+    When {
+        expr: Option<Arc<Expr>>,
+        entries: Vec<WhenEntry>,
+    },
+    Object {
         delegation_specifiers: Vec<DelegationSpecifier>,
         body: ClassBody,
     },
@@ -161,6 +165,20 @@ pub enum Expr {
     Return(Option<Arc<Expr>>),
     Continue,
     Break,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct WhenEntry {
+    pub conditions: Vec<WhenCondition>,
+    pub body: Block,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum WhenCondition {
+    Else,
+    Expr(Expr),
+    In { negated: bool, expr: Expr },
+    Is { negated: bool, ty: Type },
 }
 
 #[derive(Clone, PartialEq, Debug)]

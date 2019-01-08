@@ -509,7 +509,7 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
         Token::While => read_expr_while(s),
         // do {...} while(...) expression
         Token::Do => read_expr_do_while(s),
-        Token::When => always_err!(),
+        Token::When => read_expr_when(s),
         Token::Object => read_object_literal(s),
 
         Token::Throw => {
@@ -648,6 +648,69 @@ fn read_expr_do_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
         expr,
         body,
     })
+}
+
+fn read_expr_when(s: &mut TokenCursor) -> Result<Expr, KtError> {
+//    : "when" ("(" expression ")")? "{"
+//        whenEntry*
+//    "}"
+//  ;
+
+    s.expect(Token::When)?;
+
+    let expr = if s.optional_expect(Token::LeftParen) {
+        let expr = Arc::new(read_expresion(s)?);
+        s.expect(Token::RightParen)?;
+        Some(expr)
+    } else {
+        None
+    };
+
+    s.expect(Token::LeftBrace)?;
+    let entries = s.many1(&read_expr_when_entry)?;
+    s.expect(Token::RightBrace)?;
+
+    Ok(Expr::When {
+        expr,
+        entries,
+    })
+}
+
+fn read_expr_when_entry(s: &mut TokenCursor) -> Result<WhenEntry, KtError> {
+    let conditions = if s.read_token(0) == Token::Else {
+        s.next();
+        vec![WhenCondition::Else]
+    } else {
+        s.separated_by(Token::Comma, &read_expr_when_condition)?
+    };
+
+    s.expect(Token::LeftArrow)?;
+    let body = read_control_structure_body(s)?;
+    s.semi();
+    Ok(WhenEntry { conditions, body })
+}
+
+fn read_expr_when_condition(s: &mut TokenCursor) -> Result<WhenCondition, KtError> {
+    println!("Token: {}", s.read_token(0));
+    match s.read_token(0) {
+        Token::In => {
+            s.next();
+            Ok(WhenCondition::In { negated: false, expr: read_expresion(s)? })
+        },
+        Token::NotIn => {
+            s.next();
+            Ok(WhenCondition::In { negated: true, expr: read_expresion(s)? })
+        }
+        Token::Is => {
+            s.next();
+            Ok(WhenCondition::Is { negated: false, ty: read_type(s)? })
+        }
+        Token::NotIs => {
+            s.next();
+            Ok(WhenCondition::Is { negated: true, ty: read_type(s)? })
+        }
+        _ => Ok(WhenCondition::Expr(read_expresion(s)?))
+    }
 }
 
 fn read_object_literal(s: &mut TokenCursor) -> Result<Expr, KtError> {
@@ -986,6 +1049,9 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 }
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
+    let save = s.pos;
+    let modifiers = read_modifiers(s)?;
+
     if s.read_token(0) == Token::Fun ||
         s.read_token(0) == Token::Val ||
         s.read_token(0) == Token::Var ||
@@ -993,14 +1059,14 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
         s.read_token(0) == Token::Interface ||
         s.read_token(0) == Token::Object ||
         s.read_token(0) == Token::TypeAlias {
-        Ok(Statement::Decl(read_declaration(s)?))
+        Ok(Statement::Decl(read_declaration(s, modifiers)?))
     } else {
+        s.pos = save;
         Ok(Statement::Expr(read_expresion(s)?))
     }
 }
 
-fn read_declaration(s: &mut TokenCursor) -> Result<Declaration, KtError> {
-    let modifiers = read_modifiers(s)?;
+fn read_declaration(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Declaration, KtError> {
 
     let res = match s.read_token(0) {
         Token::Fun => Declaration::Function(read_function(s, modifiers)?),
@@ -1631,6 +1697,13 @@ mod tests {
                     val b = object : List<Int> {}
 
                     "Hello".let { println(it) }
+
+                    when(5) {
+                        1 -> "1"
+                        2,3,4 -> "2"
+                        5 -> "ok"
+                        else -> "3"
+                    }
                     return null
                 }
             }     
@@ -1709,6 +1782,16 @@ mod tests {
         println!("{:?}", get_ast("a += 5", read_expresion));
         println!("{:?}", get_ast("list[5]!!", read_expresion));
         println!("{:?}", get_ast("list[5]!!.get()?.getOther() ?: 1", read_expresion));
+        println!("{:?}", get_ast(r#"
+            when(5) {
+                1 -> "1"
+                2,3,4 -> "2"
+                5 -> "ok"
+                in listOf(1,2,3) -> "not ok"
+                is String -> "string"
+                else -> "3"
+            }
+            "#, read_expresion));
     }
 
     #[test]

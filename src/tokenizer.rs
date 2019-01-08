@@ -321,7 +321,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     let c1 = stream.read_u8(1);
 
     let tk = match c0 {
-        b'\n' => Token::Semicolon,
+//        b'\n' => Token::Newline,
         b';' => Token::Semicolon,
         b'(' => Token::LeftParen,
         b')' => Token::RightParen,
