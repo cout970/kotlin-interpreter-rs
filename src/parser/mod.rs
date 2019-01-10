@@ -207,6 +207,29 @@ impl TokenCursor {
         Ok((accum_operands, accum_operators))
     }
 
+//    pub fn chain2<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), KtError>
+//        where F1: Fn(&mut TokenCursor) -> Result<OR, KtError>,
+//              F2: Fn(&mut TokenCursor) -> Result<OS, KtError>,
+//    {
+//        let mut accum_operands: Vec<OS> = vec![];
+//        let mut accum_operators: Vec<OR> = vec![];
+//
+//        accum_operands.push(operands(self)?);
+//
+//        if self.at_newline() {
+//            while let Some(operator) = self.optional(&operators) {
+//                accum_operators.push(operator);
+//                accum_operands.push(operands(self)?);
+//
+//                if self.at_newline() {
+//                    break;
+//                }
+//            }
+//        }
+//
+//        Ok((accum_operands, accum_operators))
+//    }
+
     pub fn expect(&mut self, tk: Token) -> Result<(), KtError> {
         if tk == self.read_token(0) {
             self.next();
@@ -232,6 +255,21 @@ impl TokenCursor {
 
     pub fn semi(&mut self) {
         self.optional_expect(Token::Semicolon);
+    }
+
+    pub fn at_newline(&mut self) -> bool {
+        let previous = self.pos.max(1) - 1;
+        let this = self.pos;
+
+        let start = (self.tokens[previous as usize].0).1;
+        let end = (self.tokens[this as usize].0).0;
+
+        for i in start..end {
+            if *self.code.get(i as usize).unwrap() == b'\n' {
+                return true;
+            }
+        }
+        false
     }
 
     pub fn optional_expect_keyword(&mut self, keyword: &str) -> bool {

@@ -305,8 +305,19 @@ fn read_expr_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
     Ok(Expr::Chain { operands: dis, operators: ops })
 }
 
+
+create_operator_fun!(
+    read_expr_in_operator,
+    Token::In => "in",
+    Token::NotIn => "!in",
+);
+
 fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let expr = read_expr_elvis(s)?;
+
+    if s.at_newline() {
+        return Ok(expr);
+    }
 
     match s.read_token(0) {
         Token::Is | Token::NotIs => {
@@ -320,9 +331,13 @@ fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
 
             accum_operands.push(expr);
 
-            while let Some(operator) = s.optional(&read_expr_comparison_operator) {
+            while let Some(operator) = s.optional(&read_expr_in_operator) {
                 accum_operators.push(operator);
                 accum_operands.push(read_expr_elvis(s)?);
+
+                if s.at_newline() {
+                    break;
+                }
             }
 
             Ok(Expr::Chain { operands: accum_operands, operators: accum_operators })
