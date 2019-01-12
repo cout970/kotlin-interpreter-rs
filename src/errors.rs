@@ -10,7 +10,7 @@ use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::source_code::to_str;
-use crate::tokenizer::Token;
+use crate::tokenizer::token::Token;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {

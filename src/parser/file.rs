@@ -6,7 +6,7 @@ use crate::errors::ParserError;
 use crate::map;
 use crate::ast::*;
 use crate::parser::token_cursor::TokenCursor;
-use crate::tokenizer::Token;
+use crate::tokenizer::token::Token;
 
 macro_rules! create_operator_fun {
     ($name: ident, $(Token::$e: tt => $s: expr,)+) => {

@@ -13,11 +13,9 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::errors::KtError;
+use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
-use crate::tokenizer::get_code_cursor;
-use crate::tokenizer::read_all_tokens;
-use crate::parser::Parser;
 
 pub mod ast;
 pub mod source_code;
@@ -88,9 +86,7 @@ fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
-
-    use crate::tokenizer::get_code_cursor;
-    use crate::tokenizer::read_all_tokens;
+    use crate::tokenizer::Tokenizer;
 
     use super::*;
 
@@ -102,8 +98,8 @@ mod tests {
         assert_eq!(codes.len(), 275);
 
         for code in codes {
-            let ref mut s = get_code_cursor(code.clone());
-            read_all_tokens(s).expect("Expected: All tokens to be correct");
+            let ref mut s = Tokenizer::new(code.clone());
+            s.read_tokens().expect("Expected: All tokens to be correct");
         }
     }
 }

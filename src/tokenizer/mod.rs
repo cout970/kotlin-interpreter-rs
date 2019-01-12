@@ -1,173 +1,56 @@
 use crate::errors::KtError;
 use crate::errors::TokenizerError;
+use crate::Number;
 use crate::source_code::SOURCE_CODE_PADDING;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
-use crate::Number;
+use crate::tokenizer::code_cursor::CodeCursor;
+use crate::tokenizer::code_cursor::CodeCursorMode;
+use crate::tokenizer::token::Token;
 
-#[derive(Eq, PartialEq, Copy, Clone)]
-enum TokenizerMode {
-    Normal,
-    String,
-    MultilineString,
-    StringTemplate,
-}
+pub mod token;
+mod code_cursor;
 
-pub struct CodeCursor {
-    source: SourceCode,
-    pos: u32,
-    mode: Vec<(TokenizerMode, i32)>,
-}
+pub struct Tokenizer(CodeCursor);
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Token {
-    Id(String),
-    Number(Number),
-    Char(char),
-    StringStart,
-    StringEnd,
-    StringTemplateStart,
-    StringTemplateEnd,
-    StringContent(String),
-    StringVariable(String),
-    // Signs
-    Semicolon,
-    LeftParen,
-    RightParen,
-    LeftBrace,
-    RightBrace,
-    LeftBracket,
-    RightBracket,
-    LeftAngleBracket,
-    RightAngleBracket,
-    LessEquals,
-    GreaterEquals,
-    At,
-    Colon,
-    DoubleColon,
-    Dollar,
-    Dot,
-    DoubleDot,
-    Comma,
-    QuestionMark,
-    SafeDot,
-    ExclamationMark,
-    DoubleExclamationMark,
-    NotEquals,
-    NotDoubleEquals,
-    LeftArrow,
-    Elvis,
-    Plus,
-    DoublePlus,
-    Minus,
-    DoubleMinus,
-    Asterisk,
-    Slash,
-    Percent,
-    Equals,
-    DoubleEquals,
-    TripleEquals,
-    PlusEquals,
-    MinusEquals,
-    TimesEquals,
-    DivEquals,
-    ModEquals,
-    Ampersand,
-    DoubleAmpersand,
-    Pipe,
-    DoublePipe,
-    Underscore,
-    // Keywords
-    As,
-    AsQuestionMark,
-    Break,
-    Class,
-    Continue,
-    Do,
-    Else,
-    False,
-    For,
-    Fun,
-    If,
-    In,
-    NotIn,
-    Is,
-    NotIs,
-    Interface,
-    Null,
-    Object,
-    Package,
-    Return,
-    Super,
-    This,
-    Throw,
-    True,
-    Try,
-    TypeAlias,
-    Val,
-    Var,
-    When,
-    While,
-    // End of file
-    EOF,
-}
-
-
-impl CodeCursor {
-    #[inline]
-    fn read_char(&mut self, index: u32) -> char {
-        self.source[(self.pos + index) as usize] as char
+impl Tokenizer {
+    pub fn new(input: SourceCode) -> Self {
+        Tokenizer(get_code_cursor(input))
     }
 
-    #[inline]
-    pub fn read_u8(&mut self, index: u32) -> u8 {
-        self.source[(self.pos + index) as usize]
+    pub fn read_tokens(&mut self) -> Result<Vec<(Span, Token)>, KtError> {
+        read_all_tokens(&mut self.0)
     }
 
-    #[inline]
-    pub fn moved(&mut self, index: u32) -> &mut Self {
-        self.pos += index;
-        self
-    }
-
-    #[inline]
-    pub fn next(&mut self) {
-        self.pos += 1;
-    }
-
-    #[inline]
-    fn mode(&mut self) -> TokenizerMode {
-        self.mode.last().unwrap().0
-    }
-
-    #[inline]
-    fn brace_count(&mut self) -> i32 {
-        self.mode.last().unwrap().1
-    }
-
-    #[inline]
-    fn inc_brace(&mut self) {
-        self.mode.last_mut().unwrap().1 += 1;
-    }
-
-    #[inline]
-    fn dec_brace(&mut self) {
-        self.mode.last_mut().unwrap().1 -= 1;
-    }
-
-    pub fn code_ref(&mut self) -> SourceCode {
-        self.source.clone()
+    pub fn read_token(&mut self) -> Result<(Span, Token), KtError> {
+        read_token(&mut self.0)
     }
 }
 
-pub fn get_code_cursor(input: SourceCode) -> CodeCursor {
-    CodeCursor { source: input, pos: 0, mode: vec![(TokenizerMode::Normal, 0)] }
+fn get_code_cursor(input: SourceCode) -> CodeCursor {
+    CodeCursor { source: input, pos: 0, mode: vec![(CodeCursorMode::Normal, 0)] }
 }
 
-pub fn read_token(stream: &mut CodeCursor) -> Result<(Span, Token), KtError> {
+fn read_all_tokens(stream: &mut CodeCursor) -> Result<Vec<(Span, Token)>, KtError> {
+    let mut tks = vec![];
+
+    loop {
+        let pair = read_token(stream)?;
+        if let Token::EOF = &pair.1 {
+            tks.push(pair);
+            break;
+        } else {
+            tks.push(pair);
+        }
+    }
+
+    Ok(tks)
+}
+
+fn read_token(stream: &mut CodeCursor) -> Result<(Span, Token), KtError> {
     match stream.mode() {
-        TokenizerMode::String => read_string_token(stream, false),
-        TokenizerMode::MultilineString => read_string_token(stream, true),
+        CodeCursorMode::String => read_string_token(stream, false),
+        CodeCursorMode::MultilineString => read_string_token(stream, true),
         _ => {
             trim_spaces(stream);
             trim_comments(stream)?;
@@ -201,7 +84,7 @@ fn read_string_token(stream: &mut CodeCursor, multiline: bool) -> Result<(Span, 
             if stream.read_char(1) == '{' {
                 stream.next();
                 stream.next();
-                stream.mode.push((TokenizerMode::StringTemplate, 1));
+                stream.mode.push((CodeCursorMode::StringTemplate, 1));
                 Token::StringTemplateStart
             } else {
                 read_string_token_variable(stream)?
@@ -260,7 +143,7 @@ fn read_string_token_content(stream: &mut CodeCursor, multiline: bool) -> Result
             return Err(KtError::Tokenizer {
                 code: stream.code_ref(),
                 span: (start, stream.pos),
-                info: TokenizerError::ExpectedEndOfString
+                info: TokenizerError::ExpectedEndOfString,
             });
         }
 
@@ -294,23 +177,6 @@ fn read_string_token_content(stream: &mut CodeCursor, multiline: bool) -> Result
     Ok(Token::StringContent(content))
 }
 
-
-pub fn read_all_tokens(stream: &mut CodeCursor) -> Result<Vec<(Span, Token)>, KtError> {
-    let mut tks = vec![];
-
-    loop {
-        let pair = read_token(stream)?;
-        if let Token::EOF = &pair.1 {
-            tks.push(pair);
-            break;
-        } else {
-            tks.push(pair);
-        }
-    }
-
-    Ok(tks)
-}
-
 fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
     if (stream.pos as usize + SOURCE_CODE_PADDING) >= stream.source.len() {
         return Ok(Token::EOF);
@@ -331,7 +197,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         }
         b'}' => {
             stream.dec_brace();
-            if stream.mode() == TokenizerMode::StringTemplate && stream.brace_count() == 0 {
+            if stream.mode() == CodeCursorMode::StringTemplate && stream.brace_count() == 0 {
                 stream.mode.pop();
                 Token::StringTemplateEnd
             } else {
@@ -489,11 +355,11 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
         },
         b'"' => {
             if c1 == b'"' && stream.read_u8(2) == b'"' {
-                stream.mode.push((TokenizerMode::MultilineString, 0));
+                stream.mode.push((CodeCursorMode::MultilineString, 0));
                 stream.next();
                 stream.next();
             } else {
-                stream.mode.push((TokenizerMode::String, 0));
+                stream.mode.push((CodeCursorMode::String, 0));
             }
             Token::StringStart
         }
@@ -870,21 +736,20 @@ fn trim_comments(stream: &mut CodeCursor) -> Result<(), KtError> {
 #[cfg(test)]
 mod tests {
     use crate::source_code::from_str;
-    use crate::tokenizer::get_code_cursor;
     use crate::tokenizer::read_token;
-    use crate::tokenizer::Token;
+    use crate::tokenizer::token::Token;
 
     use super::*;
 
     fn read_single_token(code: &str) -> Token {
         let input = from_str(code);
-        let ref mut s = get_code_cursor(input);
-        read_token(s).unwrap().1
+        let ref mut s = Tokenizer::new(input);
+        s.read_token().unwrap().1
     }
 
     #[test]
     fn check_basic_tokens() {
-        let ref mut s = get_code_cursor(from_str("\
+        let ref mut s = Tokenizer::new(from_str("\
 ; ( ) { } [ ] < > @ : :: $ . .. , ?: ? ! -> .. + ++ - -- * / % = == === != !== += -= *= /= %= & && | ||\
 "));
 
@@ -901,14 +766,18 @@ mod tests {
             Token::EOF,
         ];
 
-        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+        let found = s.read_tokens()
+            .unwrap()
+            .into_iter()
+            .map(|(_, tk)| tk)
+            .collect::<Vec<_>>();
 
         assert_eq!(expected, found);
     }
 
     #[test]
     fn check_string_variables() {
-        let ref mut s = get_code_cursor(from_str("\"Hello $world!!!\""));
+        let ref mut s = Tokenizer::new(from_str("\"Hello $world!!!\""));
 
         let expected = vec![
             Token::StringStart, Token::StringContent(String::from("Hello ")),
@@ -917,14 +786,18 @@ mod tests {
             Token::EOF,
         ];
 
-        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+        let found = s.read_tokens()
+            .unwrap()
+            .into_iter()
+            .map(|(_, tk)| tk)
+            .collect::<Vec<_>>();
 
         assert_eq!(expected, found);
     }
 
     #[test]
     fn check_string_templates() {
-        let ref mut s = get_code_cursor(from_str("\"Hello ${world}!!!\""));
+        let ref mut s = Tokenizer::new(from_str("\"Hello ${world}!!!\""));
 
         let expected = vec![
             Token::StringStart, Token::StringContent(String::from("Hello ")),
@@ -933,14 +806,18 @@ mod tests {
             Token::EOF,
         ];
 
-        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+        let found = s.read_tokens()
+            .unwrap()
+            .into_iter()
+            .map(|(_, tk)| tk)
+            .collect::<Vec<_>>();
 
         assert_eq!(expected, found);
     }
 
     #[test]
     fn check_string_complex_templates() {
-        let ref mut s = get_code_cursor(from_str("\"\"\"Hello ${println(\"Real ${1+2} Hello\")}!!!\"\"\""));
+        let ref mut s = Tokenizer::new(from_str("\"\"\"Hello ${println(\"Real ${1+2} Hello\")}!!!\"\"\""));
 
         let expected = vec![
             Token::StringStart, Token::StringContent(String::from("Hello ")), Token::StringTemplateStart,    // "Hello ${
@@ -954,7 +831,11 @@ mod tests {
             Token::EOF,
         ];
 
-        let found = read_all_tokens(s).unwrap().into_iter().map(|(_, tk)| tk).collect::<Vec<_>>();
+        let found = s.read_tokens()
+            .unwrap()
+            .into_iter()
+            .map(|(_, tk)| tk)
+            .collect::<Vec<_>>();
 
         assert_eq!(expected, found);
     }

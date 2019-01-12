@@ -5,9 +5,8 @@ use crate::parser::file::read_file;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
-use crate::tokenizer::get_code_cursor;
-use crate::tokenizer::read_all_tokens;
-use crate::tokenizer::Token;
+use crate::tokenizer::token::Token;
+use crate::tokenizer::Tokenizer;
 
 pub struct TokenCursor {
     code: SourceCode,
@@ -22,8 +21,8 @@ pub fn get_token_cursor(code: SourceCode, tokens: Vec<(Span, Token)>) -> TokenCu
 pub fn get_ast<F, T>(c: &str, func: F) -> T
     where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
     let code = from_str(c);
-    let mut code_cursor = get_code_cursor(code.clone());
-    let tks = read_all_tokens(&mut code_cursor).unwrap();
+    let mut code_cursor = Tokenizer::new(code.clone());
+    let tks = code_cursor.read_tokens().unwrap();
 
     // Debug {
     for (_, x) in &tks {

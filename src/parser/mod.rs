@@ -1,5 +1,5 @@
 use crate::source_code::Span;
-use crate::tokenizer::Token;
+use crate::tokenizer::token::Token;
 use crate::source_code::SourceCode;
 use crate::ast::KotlinFile;
 use crate::errors::KtError;
