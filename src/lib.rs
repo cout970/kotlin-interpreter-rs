@@ -17,7 +17,6 @@ use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 
-pub mod ast;
 pub mod source_code;
 pub mod tokenizer;
 pub mod parser;

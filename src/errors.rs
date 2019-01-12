@@ -4,7 +4,7 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 use std::fmt::Write;
 
-use crate::ast::Modifier;
+use crate::parser::ast::Modifier;
 use crate::Number;
 use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;

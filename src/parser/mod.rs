@@ -1,14 +1,15 @@
-use crate::source_code::Span;
-use crate::tokenizer::token::Token;
-use crate::source_code::SourceCode;
-use crate::ast::KotlinFile;
+use crate::parser::ast::KotlinFile;
 use crate::errors::KtError;
 use crate::parser::file::read_file;
 use crate::parser::token_cursor::get_token_cursor;
 use crate::parser::token_cursor::TokenCursor;
+use crate::source_code::SourceCode;
+use crate::source_code::Span;
+use crate::tokenizer::token::Token;
 
 mod file;
 mod token_cursor;
+pub mod ast;
 
 pub struct Parser(TokenCursor);
 

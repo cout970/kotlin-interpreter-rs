@@ -1,11 +1,6 @@
 use std::collections::HashSet;
 
-use crate::ast::Class;
-use crate::ast::Function;
-use crate::ast::KotlinFile;
-use crate::ast::Modifier;
-use crate::ast::Preamble;
-use crate::ast::TopLevelObject;
+use crate::parser::ast::*;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
 use crate::source_code::SourceCode;
