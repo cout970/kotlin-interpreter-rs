@@ -13,12 +13,11 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::errors::KtError;
-use crate::parser::get_token_cursor;
-use crate::parser::TokenCursor;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 use crate::tokenizer::get_code_cursor;
 use crate::tokenizer::read_all_tokens;
+use crate::parser::Parser;
 
 pub mod ast;
 pub mod source_code;
@@ -35,7 +34,7 @@ mod test_utils;
 // - https://github.com/JetBrains/kotlin/blob/686cfa6fd29b8e096ea04a2b96e2dc08adced512/compiler/psi/src/org/jetbrains/kotlin/parsing/KotlinParsing.java
 // - https://play.kotlinlang.org
 
-
+// TODO move everything from here to util.rs or something
 #[derive(Clone, PartialEq, Debug)]
 pub enum Number {
     Double(f64),
@@ -70,22 +69,6 @@ fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
             }
         }
     }
-}
-
-fn get_ast<F, T>(c: &str, func: F) -> T
-    where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
-    let code = from_str(c);
-    let mut code_cursor = get_code_cursor(code.clone());
-    let tks = read_all_tokens(&mut code_cursor).unwrap();
-
-    // Debug
-    for (_, x) in &tks {
-        print!("{} ", x);
-    }
-    println!();
-
-    let mut token_cursor = get_token_cursor(code.clone(), tks);
-    token_cursor.complete(&func).unwrap()
 }
 
 fn create_vec<T>(first: T, rest: Vec<T>) -> Vec<T> {

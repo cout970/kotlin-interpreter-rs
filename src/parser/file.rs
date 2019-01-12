@@ -5,7 +5,7 @@ use crate::errors::KtError;
 use crate::errors::ParserError;
 use crate::map;
 use crate::ast::*;
-use crate::parser::TokenCursor;
+use crate::parser::token_cursor::TokenCursor;
 use crate::tokenizer::Token;
 
 macro_rules! create_operator_fun {
@@ -1064,7 +1064,7 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 }
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
-    let save = s.pos;
+    let save = s.save();
     let modifiers = read_modifiers(s)?;
 
     if s.read_token(0) == Token::Fun ||
@@ -1076,7 +1076,7 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
         s.read_token(0) == Token::TypeAlias {
         Ok(Statement::Decl(read_declaration(s, modifiers)?))
     } else {
-        s.pos = save;
+        s.restore(save);
         Ok(Statement::Expr(read_expresion(s)?))
     }
 }
@@ -1590,7 +1590,7 @@ fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
 
 fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
     s.many0(&|s| {
-        let start = s.pos;
+        let start = s.save();
         match s.read_token(0) {
             Token::Id(name) => {
                 s.next();
@@ -1606,7 +1606,7 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
                     "const" | // propertyModifier
                     "expect" | "actual" // multiPlatformModifier
                     => Ok(Modifier { name }),
-                    _ => s.make_error((start, s.pos), ParserError::ExpectedTokenId {
+                    _ => s.make_error((start, s.save()), ParserError::ExpectedTokenId {
                         found: Token::Id(name.to_owned())
                     })
                 }
@@ -1615,7 +1615,7 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
             _ => {
                 let tk = s.read_token(0);
                 s.next();
-                s.make_error((start, s.pos), ParserError::ExpectedTokenId {
+                s.make_error((start, s.save()), ParserError::ExpectedTokenId {
                     found: tk
                 })
             }
@@ -1651,7 +1651,7 @@ fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError>
 
 #[cfg(test)]
 mod tests {
-    use crate::get_ast;
+    use crate::parser::token_cursor::get_ast;
 
     use super::*;
 

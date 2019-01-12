@@ -7,19 +7,14 @@ use crate::ast::Modifier;
 use crate::ast::Preamble;
 use crate::ast::TopLevelObject;
 use crate::errors::AnalyserError;
+use crate::errors::KtError;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
-pub struct CheckCtx {
+pub struct Checker {
     code: SourceCode,
     pub errors: Vec<(Span, AnalyserError)>,
     symbols: Vec<Symbol>,
-}
-
-impl CheckCtx {
-    pub fn new(code: SourceCode) -> Self {
-        CheckCtx { code, errors: vec![], symbols: vec![] }
-    }
 }
 
 struct Symbol {
@@ -35,14 +30,28 @@ enum SymbolType {
     Property,
 }
 
-pub fn check_ast(ctx: &mut CheckCtx, ast: &mut KotlinFile) {
-    check_preamble(ctx, &ast.preamble);
-    for x in &mut ast.objects {
-        check_top_level_object(ctx, x);
+impl Checker {
+    pub fn new(code: SourceCode) -> Self {
+        Checker { code, errors: vec![], symbols: vec![] }
+    }
+
+    pub fn check(&mut self, ast: &mut KotlinFile) {
+        check_preamble(self, &ast.preamble);
+        for x in &mut ast.objects {
+            check_top_level_object(self, x);
+        }
+    }
+
+    pub fn get_errors(&self) -> Vec<KtError> {
+        self.errors.iter()
+            .map(|(span, info)|
+                KtError::Analyser { code: self.code.clone(), span: *span, info: info.clone() }
+            )
+            .collect()
     }
 }
 
-fn check_preamble(ctx: &mut CheckCtx, preamble: &Preamble) {
+fn check_preamble(ctx: &mut Checker, preamble: &Preamble) {
     if let Some(pack) = &preamble.package_header {
         if !pack.modifiers.is_empty() {
             for x in &pack.modifiers {
@@ -78,7 +87,7 @@ fn check_preamble(ctx: &mut CheckCtx, preamble: &Preamble) {
     }
 }
 
-fn check_top_level_object(ctx: &mut CheckCtx, obj: &mut TopLevelObject) {
+fn check_top_level_object(ctx: &mut Checker, obj: &mut TopLevelObject) {
     match obj {
         TopLevelObject::Class(it) => { check_class(ctx, it); }
         TopLevelObject::Object(it) => {}
@@ -88,7 +97,7 @@ fn check_top_level_object(ctx: &mut CheckCtx, obj: &mut TopLevelObject) {
     }
 }
 
-fn check_class(ctx: &mut CheckCtx, class: &mut Class) {
+fn check_class(ctx: &mut Checker, class: &mut Class) {
     report_duplicated_modifiers(ctx, &class.modifiers);
     // TODO check modifiers are applicable to a class
     // check modifiers are applicable to the correct class type: 'enum interface'
@@ -99,7 +108,7 @@ fn check_class(ctx: &mut CheckCtx, class: &mut Class) {
     // missing enum body, for enum classes
 }
 
-fn check_function(ctx: &mut CheckCtx, fun: &mut Function) {
+fn check_function(ctx: &mut Checker, fun: &mut Function) {
     report_duplicated_modifiers(ctx, &fun.modifiers);
     // Duplicated type parameters
     // Types in first type parameters
@@ -110,7 +119,7 @@ fn check_function(ctx: &mut CheckCtx, fun: &mut Function) {
     //
 }
 
-fn report_duplicated_modifiers(ctx: &mut CheckCtx, mods: &Vec<Modifier>) {
+fn report_duplicated_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
     let mut names: HashSet<String> = HashSet::new();
     for x in mods {
         if names.contains(&x.name) {
@@ -124,8 +133,8 @@ fn report_duplicated_modifiers(ctx: &mut CheckCtx, mods: &Vec<Modifier>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::assert_success;
     use crate::test_utils::assert_fails;
+    use crate::test_utils::assert_success;
 
     use super::*;
 

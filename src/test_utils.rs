@@ -1,11 +1,9 @@
 use crate::errors::KtError;
-use crate::parser::get_token_cursor;
-use crate::parser::parse_file;
 use crate::source_code::from_str;
 use crate::tokenizer::get_code_cursor;
 use crate::tokenizer::read_all_tokens;
-use crate::analyzer::semantic_rules::CheckCtx;
-use crate::analyzer::semantic_rules::check_ast;
+use crate::analyzer::semantic_rules::Checker;
+use crate::parser::Parser;
 
 pub fn assert_fails(code: &str) -> Vec<KtError> {
     let code = from_str(code);
@@ -13,8 +11,8 @@ pub fn assert_fails(code: &str) -> Vec<KtError> {
     let ref mut tk_cursor = get_code_cursor(code.clone());
     let tokens = read_all_tokens(tk_cursor).unwrap();
 
-    let ref mut cursor = get_token_cursor(code.clone(), tokens);
-    let ref mut ast = match parse_file(cursor) {
+    let mut parser = Parser::new(code.clone(), tokens);
+    let ref mut ast = match parser.parse_file() {
         Ok(it) => it,
         Err(it) => {
             println!("ParsingError\n");
@@ -24,14 +22,12 @@ pub fn assert_fails(code: &str) -> Vec<KtError> {
 
     println!("Ast: {:?}\n\n", ast);
 
-    let mut ctx = CheckCtx::new(code.clone());
-    check_ast(&mut ctx, ast);
+    let mut ctx = Checker::new(code.clone());
+    ctx.check(ast);
 
-    assert!(ctx.errors.len() > 0);
-
-    ctx.errors.into_iter()
-        .map(|(span, info)| KtError::Analyser { code: code.clone(), span, info })
-        .collect()
+    let errors = ctx.get_errors();
+    assert!(errors.len() > 0);
+    errors
 }
 
 pub fn assert_success(code: &str) {
@@ -40,18 +36,18 @@ pub fn assert_success(code: &str) {
     let ref mut tk_cursor = get_code_cursor(code.clone());
     let tokens = read_all_tokens(tk_cursor).unwrap();
 
-    let ref mut cursor = get_token_cursor(code.clone(), tokens);
-    let ref mut ast = parse_file(cursor).unwrap();
+    let mut parser = Parser::new(code.clone(), tokens);
+    let ref mut ast = parser.parse_file().unwrap();
 
     println!("Ast: {:?}\n\n", ast);
 
-    let mut ctx = CheckCtx::new(code.clone());
-    check_ast(&mut ctx, ast);
+    let mut ctx = Checker::new(code.clone());
+    ctx.check(ast);
 
-    let len = ctx.errors.len();
-    ctx.errors.into_iter()
-        .map(|(span, info)| KtError::Analyser { code: code.clone(), span, info })
-        .for_each(|it| println!("{:?}", it));
+    let errors = ctx.get_errors();
+    for x in &errors {
+        println!("{:?}", x);
+    }
 
-    assert_eq!(len, 0);
+    assert_eq!(errors.len(), 0);
 }
