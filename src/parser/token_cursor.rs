@@ -42,6 +42,18 @@ impl TokenCursor {
         self.tokens[self.pos as usize + offset].0
     }
 
+    pub fn start(&mut self) -> u32 {
+        self.read_token_span(0).0
+    }
+
+    pub fn end(&mut self) -> u32 {
+        if self.pos > 0 {
+            (self.tokens[(self.pos - 1) as usize].0).1
+        } else {
+            0
+        }
+    }
+
     pub fn next(&mut self) {
         self.pos += 1;
     }

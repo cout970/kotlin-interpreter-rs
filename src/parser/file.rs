@@ -6,6 +6,7 @@ use crate::errors::ParserError;
 use crate::map;
 use crate::parser::ast::*;
 use crate::parser::token_cursor::TokenCursor;
+use crate::source_code::Span;
 use crate::tokenizer::token::Token;
 
 macro_rules! create_operator_fun {
@@ -36,6 +37,7 @@ macro_rules! iff {
         if let $p = $e { true } else { false }
     }};
 }
+
 
 fn expect_token(tk: Token) -> impl Fn(&mut TokenCursor) -> Result<(), KtError> {
     move |s: &mut TokenCursor| s.expect(tk.clone())
@@ -97,6 +99,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
 //        (getter? setter? | setter? getter?) SEMI?
 //    ;
 
+    let start = s.start();
     let mutable = s.optional_expect(Token::Var);
     if !mutable { s.expect(Token::Val)?; }
 
@@ -139,6 +142,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
         .unwrap_or((None, None));
 
     Ok(Property {
+        span: (start, s.end()),
         modifiers,
         type_parameters,
         receiver,
@@ -187,6 +191,7 @@ fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Op
 }
 
 fn read_property_getter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<PropertyGetter, KtError> {
+    let start = s.start();
     s.expect_keyword("get")?;
     if s.optional_expect(Token::LeftParen) {
         s.expect(Token::RightParen)?;
@@ -199,13 +204,14 @@ fn read_property_getter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
 
         let body = Some(read_function_body(s)?);
 
-        Ok(PropertyGetter { modifiers, ty, body })
+        Ok(PropertyGetter { span: (start, s.end()), modifiers, ty, body })
     } else {
-        Ok(PropertyGetter { modifiers, ty: None, body: None })
+        Ok(PropertyGetter { span: (start, s.end()), modifiers, ty: None, body: None })
     }
 }
 
 fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<PropertySetter, KtError> {
+    let start = s.start();
     s.expect_keyword("set")?;
     if s.optional_expect(Token::LeftParen) {
         let param_modifiers = read_modifiers(s)?;
@@ -219,9 +225,9 @@ fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
         s.expect(Token::RightParen)?;
         let body = Some(read_function_body(s)?);
 
-        Ok(PropertySetter { modifiers, param_modifiers, param_name, param_ty, body })
+        Ok(PropertySetter { span: (start, s.end()), modifiers, param_modifiers, param_name, param_ty, body })
     } else {
-        Ok(PropertySetter { modifiers, param_modifiers: vec![], param_name: None, param_ty: None, body: None })
+        Ok(PropertySetter { span: (start, s.end()), modifiers, param_modifiers: vec![], param_name: None, param_ty: None, body: None })
     }
 }
 
@@ -263,19 +269,22 @@ create_operator_fun!(
     Token::ModEquals => "%=",
 );
 
-fn read_expresion(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expresion(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_assignment_operator, &read_expr_disjunction)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
-fn read_expr_disjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_disjunction(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&expect_token(Token::DoubleAmpersand), &read_expr_conjunction)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: map(ops, |_| String::from("&&")) }))
 }
 
-fn read_expr_conjunction(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_conjunction(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&expect_token(Token::DoublePipe), &read_expr_equality_comparison)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: map(ops, |_| String::from("||")) }))
 }
 
 create_operator_fun!(
@@ -286,9 +295,10 @@ create_operator_fun!(
     Token::NotDoubleEquals => "!==",
 );
 
-fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_equality_comparison(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_equality_operator, &read_expr_comparison)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
 
@@ -300,9 +310,10 @@ create_operator_fun!(
     Token::GreaterEquals => ">=",
 );
 
-fn read_expr_comparison(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_comparison(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_comparison_operator, &read_name_infix)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
 
@@ -312,7 +323,8 @@ create_operator_fun!(
     Token::NotIn => "!in",
 );
 
-fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_name_infix(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let expr = read_expr_elvis(s)?;
 
     if s.at_newline() {
@@ -323,7 +335,7 @@ fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
         Token::Is | Token::NotIs => {
             s.next();
             let ty = read_type(s)?;
-            Ok(Expr::Is { expr: Arc::new(expr), ty })
+            Ok(((start, s.end()), Expr::Is { expr: Arc::new(expr), ty }))
         }
         _ => {
             let mut accum_operands = vec![];
@@ -340,24 +352,27 @@ fn read_name_infix(s: &mut TokenCursor) -> Result<Expr, KtError> {
                 }
             }
 
-            Ok(Expr::Chain { operands: accum_operands, operators: accum_operators })
+            Ok(((start, s.end()), Expr::Chain { operands: accum_operands, operators: accum_operators }))
         }
     }
 }
 
-fn read_expr_elvis(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_elvis(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&expect_token(Token::Elvis), &read_expr_infix_fun_call)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from(":?")) })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: map(ops, |_| String::from(":?")) }))
 }
 
-fn read_expr_infix_fun_call(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_infix_fun_call(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&|s| s.expect_id(), &read_expr_range)?;
-    Ok(Expr::InfixFun { parameters: dis, functions: ops })
+    Ok(((start, s.end()), Expr::InfixFun { parameters: dis, functions: ops }))
 }
 
-fn read_expr_range(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_range(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&expect_token(Token::DoubleDot), &read_expr_add)?;
-    Ok(Expr::Chain { operands: dis, operators: map(ops, |_| String::from("..")) })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: map(ops, |_| String::from("..")) }))
 }
 
 create_operator_fun!(
@@ -366,9 +381,10 @@ create_operator_fun!(
     Token::Minus => "-",
 );
 
-fn read_expr_add(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_add(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_add_operator, &read_expr_multiply)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
 create_operator_fun!(
@@ -378,9 +394,10 @@ create_operator_fun!(
     Token::Percent => "%",
 );
 
-fn read_expr_multiply(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_multiply(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_multiply_operator, &read_expr_type_rhs)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
 create_operator_fun!(
@@ -389,9 +406,10 @@ create_operator_fun!(
     Token::AsQuestionMark => "as?",
 );
 
-fn read_expr_type_rhs(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_type_rhs(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let (dis, ops) = s.chain(&read_expr_as_operator, &read_expr_prefix_unary)?;
-    Ok(Expr::Chain { operands: dis, operators: ops })
+    Ok(((start, s.end()), Expr::Chain { operands: dis, operators: ops }))
 }
 
 create_operator_fun!(
@@ -414,10 +432,11 @@ fn read_expr_prefix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
     read_expr_prefix_operator(s)
 }
 
-fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let ops = s.many0(&read_expr_prefix_operation)?;
     let expr = read_expr_postfix_unary(s)?;
-    Ok(Expr::Prefix { prefix: ops, expr: Arc::new(expr) })
+    Ok(((start, s.end()), Expr::Prefix { prefix: ops, expr: Arc::new(expr) }))
 }
 
 fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtError> {
@@ -477,13 +496,15 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
     Ok(suf)
 }
 
-fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     let expr = read_expr_atomic(s)?;
     let ops = s.many0(&read_expr_postfix_operation)?;
-    Ok(Expr::Postfix { expr: Arc::new(expr), postfix: ops })
+    Ok(((start, s.end()), Expr::Postfix { expr: Arc::new(expr), postfix: ops }))
 }
 
-fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     match s.read_token(0) {
         Token::LeftParen => {
             s.next();
@@ -493,30 +514,30 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
         }
         Token::Id(name) => {
             s.next();
-            Ok(Expr::Ref(name))
+            Ok(((start, s.end()), Expr::Ref(name)))
         }
         Token::True => {
             s.next();
-            Ok(Expr::Boolean(true))
+            Ok(((start, s.end()), Expr::Boolean(true)))
         }
         Token::False => {
             s.next();
-            Ok(Expr::Boolean(false))
+            Ok(((start, s.end()), Expr::Boolean(false)))
         }
         Token::Null => {
             s.next();
-            Ok(Expr::Null)
+            Ok(((start, s.end()), Expr::Null))
         }
         Token::StringStart => {
             read_expr_string(s)
         }
         Token::Char(a) => {
             s.next();
-            Ok(Expr::Char(a))
+            Ok(((start, s.end()), Expr::Char(a)))
         }
         Token::Number(lit) => {
             s.next();
-            Ok(Expr::Number(lit))
+            Ok(((start, s.end()), Expr::Number(lit)))
         }
         Token::If => read_expr_if(s),
         Token::Try => read_expr_try(s),
@@ -529,19 +550,19 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
 
         Token::Throw => {
             s.next();
-            Ok(Expr::Throw(Arc::new(read_expresion(s)?)))
+            Ok(((start, s.end()), Expr::Throw(Arc::new(read_expresion(s)?))))
         }
         Token::Return => {
             s.next();
-            Ok(Expr::Return(s.optional(&read_expresion).map(Arc::new)))
+            Ok(((start, s.end()), Expr::Return(s.optional(&read_expresion).map(Arc::new))))
         }
         Token::Continue => {
             s.next();
-            Ok(Expr::Continue)
+            Ok(((start, s.end()), Expr::Continue))
         }
         Token::Break => {
             s.next();
-            Ok(Expr::Break)
+            Ok(((start, s.end()), Expr::Break))
         }
         _ => {
             s.make_error_expected_of(vec![
@@ -555,7 +576,8 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<Expr, KtError> {
     }
 }
 
-fn read_expr_string(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_string(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     s.expect(Token::StringStart)?;
     let mut components = vec![];
 
@@ -590,10 +612,12 @@ fn read_expr_string(s: &mut TokenCursor) -> Result<Expr, KtError> {
     }
     s.expect(Token::StringEnd)?;
 
-    Ok(Expr::String(components))
+    Ok(((start, s.end()), Expr::String(components)))
 }
 
-fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_if(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    // "if" "(" expression ")" controlStructureBody SEMI? ("else" controlStructureBody)?
+    let start = s.start();
     s.expect(Token::If)?;
     s.expect(Token::LeftParen)?;
     let cond = read_expresion(s)?;
@@ -609,13 +633,14 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<Expr, KtError> {
         if_false = Some(read_control_structure_body(s)?);
     }
 
-    Ok(Expr::If { cond: Arc::new(cond), if_true, if_false })
+    Ok(((start, s.end()), Expr::If { cond: Arc::new(cond), if_true, if_false }))
 }
 
 
-fn read_expr_for(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_for(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 //    : "for" "(" annotations (multipleVariableDeclarations | variableDeclarationEntry) "in" expression ")" controlStructureBody
 //    ;
+    let start = s.start();
     s.expect(Token::For)?;
     s.expect(Token::LeftParen)?;
     let annotations = read_annotations(s)?;
@@ -625,33 +650,34 @@ fn read_expr_for(s: &mut TokenCursor) -> Result<Expr, KtError> {
     s.expect(Token::RightParen)?;
     let body = read_control_structure_body(s)?;
 
-    Ok(Expr::For {
+    Ok(((start, s.end()), Expr::For {
         annotations,
         variables,
         expr,
         body,
-    })
+    }))
 }
 
-fn read_expr_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 //    : "while" "(" expression ")" controlStructureBody
 //    ;
+    let start = s.start();
     s.expect(Token::While)?;
     s.expect(Token::LeftParen)?;
     let expr = Arc::new(read_expresion(s)?);
     s.expect(Token::RightParen)?;
     let body = read_control_structure_body(s)?;
 
-    Ok(Expr::While {
+    Ok(((start, s.end()), Expr::While {
         expr,
         body,
-    })
+    }))
 }
 
-fn read_expr_do_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_do_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 //    : "do" controlStructureBody "while" "(" expression ")"
 //    ;
-
+    let start = s.start();
     s.expect(Token::Do)?;
     let body = read_control_structure_body(s)?;
     s.expect(Token::While)?;
@@ -659,18 +685,18 @@ fn read_expr_do_while(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let expr = Arc::new(read_expresion(s)?);
     s.expect(Token::RightParen)?;
 
-    Ok(Expr::DoWhile {
+    Ok(((start, s.end()), Expr::DoWhile {
         expr,
         body,
-    })
+    }))
 }
 
-fn read_expr_when(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_when(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 //    : "when" ("(" expression ")")? "{"
 //        whenEntry*
 //    "}"
 //  ;
-
+    let start = s.start();
     s.expect(Token::When)?;
 
     let expr = if s.optional_expect(Token::LeftParen) {
@@ -685,10 +711,10 @@ fn read_expr_when(s: &mut TokenCursor) -> Result<Expr, KtError> {
     let entries = s.many1(&read_expr_when_entry)?;
     s.expect(Token::RightBrace)?;
 
-    Ok(Expr::When {
+    Ok(((start, s.end()), Expr::When {
         expr,
         entries,
-    })
+    }))
 }
 
 fn read_expr_when_entry(s: &mut TokenCursor) -> Result<WhenEntry, KtError> {
@@ -728,10 +754,10 @@ fn read_expr_when_condition(s: &mut TokenCursor) -> Result<WhenCondition, KtErro
     }
 }
 
-fn read_object_literal(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_object_literal(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 //    : "object" (":" delegationSpecifier{","})? classBody
 //    ;
-
+    let start = s.start();
     s.expect(Token::Object)?;
 
     let delegation_specifiers = if s.optional_expect(Token::Colon) {
@@ -742,10 +768,10 @@ fn read_object_literal(s: &mut TokenCursor) -> Result<Expr, KtError> {
 
     let body = read_class_body(s)?;
 
-    Ok(Expr::Object {
+    Ok(((start, s.end()), Expr::Object {
         delegation_specifiers,
         body,
-    })
+    }))
 }
 
 fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
@@ -753,11 +779,14 @@ fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
         Ok(read_block(s)?)
     } else {
         // TODO support expression annotations?
-        Ok(vec![Statement::Expr(read_expresion(s)?)])
+        let start = s.start();
+        let expr = read_expresion(s)?;
+        Ok(((start, s.end()), vec![Statement::Expr(expr)]))
     }
 }
 
-fn read_expr_try(s: &mut TokenCursor) -> Result<Expr, KtError> {
+fn read_expr_try(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
     s.expect(Token::Try)?;
     let block = read_block(s)?;
     let mut catch_blocks = vec![];
@@ -795,11 +824,11 @@ fn read_expr_try(s: &mut TokenCursor) -> Result<Expr, KtError> {
         _ => None
     };
 
-    Ok(Expr::Try {
+    Ok(((start, s.end()), Expr::Try {
         block,
         catch_blocks,
         finally,
-    })
+    }))
 }
 // END Expr
 
@@ -812,6 +841,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
 //      typeConstraints
 //      functionBody?
 //  ;
+    let start = s.start();
     s.expect(Token::Fun)?;
     let type_parameters = read_type_parameters(s)?;
 
@@ -836,6 +866,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
         read_type(s)?
     } else {
         Type {
+            span: SPAN_NONE,
             annotations: vec![],
             reference: Arc::new(TypeReference::UserType(vec![
                 SimpleUserType { name: String::from("Unit"), type_params: vec![] }
@@ -851,6 +882,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     };
 
     Ok(Function {
+        span: (start, s.end()),
         modifiers,
         type_parameters,
         receiver,
@@ -891,17 +923,19 @@ fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
 }
 
 fn read_type(s: &mut TokenCursor) -> Result<Type, KtError> {
+    let start = s.start();
     let modifiers = s.many0(&read_annotation)?;
     let reference = read_type_reference(s, false)?;
 
-    Ok(Type { annotations: modifiers, reference })
+    Ok(Type { span: (start, s.end()), annotations: modifiers, reference })
 }
 
 fn read_receiver_type(s: &mut TokenCursor) -> Result<Type, KtError> {
+    let start = s.start();
     let modifiers = s.many0(&read_annotation)?;
     let reference = read_type_reference(s, true)?;
 
-    Ok(Type { annotations: modifiers, reference })
+    Ok(Type { span: (start, s.end()), annotations: modifiers, reference })
 }
 
 fn read_annotations(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError> {
@@ -1088,11 +1122,12 @@ fn read_function_body(s: &mut TokenCursor) -> Result<FunctionBody, KtError> {
     }
 }
 
-fn read_block(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
+fn read_block(s: &mut TokenCursor) -> Result<Block, KtError> {
+    let start = s.start();
     s.expect(Token::LeftBrace)?;
     let statements = read_statements(s)?;
     s.expect(Token::RightBrace)?;
-    Ok(statements)
+    Ok(((start, s.end()), statements))
 }
 
 fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
@@ -1158,6 +1193,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 //        (classBody? | enumClassBody)
 //    ;
 
+    let start = s.start();
     let interface = s.optional_expect(Token::Interface);
     let mut class_type = ClassType::Interface;
 
@@ -1198,6 +1234,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
     };
 
     Ok(Class {
+        span: (start, s.end()),
         modifiers,
         class_type,
         name,
@@ -1240,13 +1277,13 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
         DelegationCall::None
     };
 
-    let statements = read_block(s)?;
+    let body = read_block(s)?;
 
     Ok(SecondaryConstructor {
         modifiers,
         parameters,
         delegation_call,
-        statements,
+        body,
     })
 }
 
@@ -1264,7 +1301,7 @@ fn read_delegation_call(s: &mut TokenCursor) -> Result<DelegationCall, KtError> 
 
 fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
     let user_type = read_user_type(s)?;
-    let ty = Type { annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
+    let ty = Type { span: SPAN_NONE, annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
 
     if s.optional_expect_keyword("by") {
         let expr = read_expresion(s)?;
@@ -1283,7 +1320,7 @@ fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier,
 
 fn read_delegation_specifier_without_lambda(s: &mut TokenCursor) -> Result<DelegationSpecifier, KtError> {
     let user_type = read_user_type(s)?;
-    let ty = Type { annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
+    let ty = Type { span: SPAN_NONE, annotations: vec![], reference: Arc::new(TypeReference::UserType(user_type)) };
 
     if s.optional_expect_keyword("by") {
         let expr = read_expresion(s)?;
@@ -1498,18 +1535,20 @@ fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
 
 
 fn read_anonymous_initializer(s: &mut TokenCursor) -> Result<AnonymousInitializer, KtError> {
+    let start = s.start();
     s.expect_keyword("init")?;
-    let statements = read_block(s)?;
-    Ok(AnonymousInitializer { statements })
+    let body = read_block(s)?;
+    Ok(AnonymousInitializer { span: (start, s.end()), body })
 }
 
 fn read_typealias(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<TypeAlias, KtError> {
+    let start = s.start();
     s.expect(Token::TypeAlias)?;
     let name = s.expect_id()?;
     let type_parameters = read_type_parameters(s)?;
     s.expect(Token::Equals)?;
     let ty = read_type(s)?;
-    Ok(TypeAlias { modifiers, name, type_parameters, ty })
+    Ok(TypeAlias { span: (start, s.end()), modifiers, name, type_parameters, ty })
 }
 
 fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
@@ -1517,6 +1556,7 @@ fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, 
 //    : modifiers "object" SimpleName primaryConstructor? (":" delegationSpecifier{","})? classBody?
 //    ;
 
+    let start = s.start();
     s.expect(Token::Object)?;
 
     let name = s.expect_id()?;
@@ -1534,6 +1574,7 @@ fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, 
     let body = s.optional(&read_class_body);
 
     Ok(Object {
+        span: (start, s.end()),
         modifiers,
         name,
         primary_constructor,
@@ -1601,6 +1642,7 @@ fn read_preamble(s: &mut TokenCursor) -> Result<Preamble, KtError> {
 
 fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
     // "import" SimpleName{"."} ("." "*" | "as" SimpleName)? SEMI?
+    let start = s.start();
     s.expect_keyword("import")?;
     let mut path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     let mut alias = None;
@@ -1619,16 +1661,17 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
     }
     s.semi();
 
-    Ok(Import { path, alias })
+    Ok(Import { span: (start, s.end()), path, alias })
 }
 
 fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
+    let start = s.start();
     let modifiers = read_modifiers(s)?;
     s.expect(Token::Package)?;
     let path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     s.semi();
 
-    Ok(PackageHeader { modifiers, path })
+    Ok(PackageHeader { span: (start, s.end()), modifiers, path })
 }
 
 fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
@@ -1667,6 +1710,7 @@ fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
 }
 
 fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> {
+    let start = s.start();
     s.expect(Token::At)?;
     s.expect_keyword("file")?;
     s.expect(Token::Colon)?;
@@ -1683,11 +1727,12 @@ fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> 
         }
     };
 
-    Ok(FileAnnotation { annotations })
+    Ok(FileAnnotation { span: (start, s.end()), annotations })
 }
 
 fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
     // SimpleName{"."} typeArguments? valueArguments?
+    let start = s.start();
     let names = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
 
     let type_arguments = if s.read_token(0) == Token::LeftAngleBracket {
@@ -1702,7 +1747,7 @@ fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError>
         vec![]
     };
 
-    Ok(Annotation { use_site_target: None, names, type_arguments, value_arguments })
+    Ok(Annotation { span: (start, s.end()), use_site_target: None, names, type_arguments, value_arguments })
 }
 
 #[cfg(test)]

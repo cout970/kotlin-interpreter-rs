@@ -36,7 +36,7 @@ fn declare_top_level_object(env: &mut Env, obj: &TopLevelObject) -> Result<(), K
         TopLevelObject::Object(_) => {}
         TopLevelObject::Function(_) => {}
         TopLevelObject::Property(_) => {}
-        TopLevelObject::TypeAlias(TypeAlias { modifiers, name, type_parameters, ty }) => {
+        TopLevelObject::TypeAlias(TypeAlias { span, modifiers, name, type_parameters, ty }) => {
             env.alias.insert(name.clone(), signature_of_type(ty));
         }
     }

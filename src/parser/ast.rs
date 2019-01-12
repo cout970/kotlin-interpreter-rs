@@ -1,7 +1,12 @@
 use std::sync::Arc;
+use std::borrow::Borrow;
 
 use crate::Number;
 use crate::source_code::Span;
+use std::ops::Deref;
+
+pub const SPAN_NONE: Span = (0,0);
+pub type Path = Vec<String>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct KotlinFile {
@@ -23,6 +28,7 @@ pub struct Preamble {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FileAnnotation {
+    pub span: Span,
     pub annotations: Vec<Annotation>,
 //    type_arguments: Vec<Type>,
 //    value_arguments: Option<>,
@@ -30,7 +36,8 @@ pub struct FileAnnotation {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Annotation {
-    pub names: Vec<String>,
+    pub span: Span,
+    pub names: Path,
     pub use_site_target: Option<String>,
     pub type_arguments: Vec<Type>,
     pub value_arguments: Vec<ValueArgument>,
@@ -38,12 +45,14 @@ pub struct Annotation {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Import {
+    pub span: Span,
     pub path: Vec<String>,
     pub alias: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PackageHeader {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub path: Vec<String>,
 }
@@ -64,6 +73,7 @@ pub enum TopLevelObject {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Property {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
@@ -77,12 +87,13 @@ pub struct Property {
 #[derive(Clone, PartialEq, Debug)]
 pub enum PropertyInitialization {
     None,
-    Expr(Expr),
-    Delegation(Expr),
+    Expr(ExprVal),
+    Delegation(ExprVal),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PropertyGetter {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub ty: Option<Type>,
     pub body: Option<FunctionBody>,
@@ -90,6 +101,7 @@ pub struct PropertyGetter {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PropertySetter {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub param_modifiers: Vec<Modifier>,
     pub param_name: Option<String>,
@@ -100,33 +112,33 @@ pub struct PropertySetter {
 // TODO add span to expressions
 pub type ExprVal = (Span, Expr);
 pub type ExprRef = Arc<(Span, Expr)>;
-pub type Block = Vec<Statement>;
+pub type Block = (Span, Vec<Statement>);
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
     Chain {
-        operands: Vec<Expr>,
+        operands: Vec<ExprVal>,
         operators: Vec<String>,
     },
     InfixFun {
-        parameters: Vec<Expr>,
+        parameters: Vec<ExprVal>,
         functions: Vec<String>,
     },
     Prefix {
         prefix: Vec<String>,
-        expr: Arc<Expr>,
+        expr: ExprRef,
     },
     Postfix {
-        expr: Arc<Expr>,
+        expr: ExprRef,
         postfix: Vec<ExprPostfix>,
     },
     Is {
-        expr: Arc<Expr>,
+        expr: ExprRef,
         ty: Type,
     },
     String(Vec<StringComponent>),
     If {
-        cond: Arc<Expr>,
+        cond: ExprRef,
         if_true: Block,
         if_false: Option<Block>,
     },
@@ -138,19 +150,19 @@ pub enum Expr {
     For {
         annotations: Vec<Annotation>,
         variables: Vec<VariableDeclarationEntry>,
-        expr: Arc<Expr>,
+        expr: ExprRef,
         body: Block,
     },
     While {
-        expr: Arc<Expr>,
+        expr: ExprRef,
         body: Block,
     },
     DoWhile {
-        expr: Arc<Expr>,
+        expr: ExprRef,
         body: Block,
     },
     When {
-        expr: Option<Arc<Expr>>,
+        expr: Option<ExprRef>,
         entries: Vec<WhenEntry>,
     },
     Object {
@@ -162,8 +174,8 @@ pub enum Expr {
     Char(char),
     Number(Number),
     Null,
-    Throw(Arc<Expr>),
-    Return(Option<Arc<Expr>>),
+    Throw(ExprRef),
+    Return(Option<ExprRef>),
     Continue,
     Break,
 }
@@ -177,8 +189,8 @@ pub struct WhenEntry {
 #[derive(Clone, PartialEq, Debug)]
 pub enum WhenCondition {
     Else,
-    Expr(Expr),
-    In { negated: bool, expr: Expr },
+    Expr(ExprVal),
+    In { negated: bool, expr: ExprVal },
     Is { negated: bool, ty: Type },
 }
 
@@ -186,7 +198,7 @@ pub enum WhenCondition {
 pub enum StringComponent {
     Content(String),
     Variable(String),
-    Template(Expr),
+    Template(ExprVal),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -202,9 +214,9 @@ pub enum ExprPostfix {
     Increment,
     Decrement,
     AssertNonNull,
-    ArrayAccess(Expr),
+    ArrayAccess(ExprVal),
     FunCall(CallSuffix),
-    MemberAccess { operator: String, next: Expr },
+    MemberAccess { operator: String, next: ExprVal },
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -215,6 +227,7 @@ pub struct VariableDeclarationEntry {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
@@ -229,26 +242,27 @@ pub struct Function {
 #[derive(Clone, PartialEq, Debug)]
 pub enum FunctionBody {
     Block(Block),
-    Expression(Expr),
+    Expression(ExprVal),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Statement {
-    Expr(Expr),
+    Expr(ExprVal),
     Decl(Declaration),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Declaration {
+    Class(Class),
+    Object(Object),
     Function(Function),
     Property(Property),
-    Class(Class),
     TypeAlias(TypeAlias),
-    Object(Object),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeAlias {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
@@ -257,6 +271,7 @@ pub struct TypeAlias {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Object {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub name: String,
     pub primary_constructor: Option<PrimaryConstructor>,
@@ -284,7 +299,7 @@ pub struct FunctionParameter {
     pub mutability: ParameterMutability,
     pub name: String,
     pub ty: Type,
-    pub default_value: Option<Expr>,
+    pub default_value: Option<ExprVal>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -303,6 +318,7 @@ pub struct TypeParameter {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Type {
+    pub span: Span,
     pub annotations: Vec<Annotation>,
     pub reference: Arc<TypeReference>,
 }
@@ -347,6 +363,7 @@ pub enum ClassType {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Class {
+    pub span: Span,
     pub modifiers: Vec<Modifier>,
     pub class_type: ClassType,
     pub name: String,
@@ -386,7 +403,8 @@ pub enum Member {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct AnonymousInitializer {
-    pub statements: Vec<Statement>
+    pub span: Span,
+    pub body: Block
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -394,7 +412,7 @@ pub struct SecondaryConstructor {
     pub modifiers: Vec<Modifier>,
     pub parameters: Vec<FunctionParameter>,
     pub delegation_call: DelegationCall,
-    pub statements: Vec<Statement>,
+    pub body: Block,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -413,7 +431,7 @@ pub struct PrimaryConstructor {
 #[derive(Clone, PartialEq, Debug)]
 pub enum DelegationSpecifier {
     Type(Type),
-    DelegatedBy(Type, Expr),
+    DelegatedBy(Type, ExprVal),
     FunctionCall(Type, CallSuffix),
 }
 
@@ -428,7 +446,7 @@ pub struct CallSuffix {
 pub struct ValueArgument {
     pub name: Option<String>,
     pub spread: bool,
-    pub expr: Expr,
+    pub expr: ExprVal,
 }
 
 #[derive(Clone, PartialEq, Debug)]
