@@ -221,7 +221,6 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             _ => Token::RightAngleBracket
         },
         b'@' => Token::At,
-        b'_' => Token::Underscore,
         b':' => match c1 {
             b':' => {
                 stream.next();
@@ -263,13 +262,14 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             }
             b'i' => {
                 let c2 = stream.read_u8(2);
-                match c2 {
-                    b'n' => {
+                let b = stream.read_char(3).is_alphabetic() || stream.read_char(3) == '_';
+                match (c2, b) {
+                    (b'n', false) => {
                         stream.next();
                         stream.next();
                         Token::NotIn
                     }
-                    b's' => {
+                    (b's', false) => {
                         stream.next();
                         stream.next();
                         Token::NotIs
@@ -364,7 +364,7 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             Token::StringStart
         }
         b'\'' => { return Ok(read_char(stream)?); }
-        b'a'..=b'z' | b'A'..=b'Z' => { return Ok(read_identifier_or_keyword(stream)); }
+        b'a'..=b'z' | b'A'..=b'Z' | b'_' => { return Ok(read_identifier_or_keyword(stream)); }
         b'`' => { return read_escaped_identifier(stream); }
         b'0'..=b'9' => { return Ok(read_number(stream)?); }
         _ => return Err(KtError::Tokenizer {
@@ -412,7 +412,7 @@ fn read_identifier_or_keyword(stream: &mut CodeCursor) -> Token {
 
     loop {
         let c = stream.read_char(0);
-        if !c.is_alphanumeric() {
+        if !c.is_alphanumeric() && c != '_' {
             break;
         }
         id.push(c);
@@ -455,6 +455,7 @@ fn read_identifier_or_keyword(stream: &mut CodeCursor) -> Token {
         "var" => Token::Var,
         "when" => Token::When,
         "while" => Token::While,
+        "_" => Token::Underscore,
         _ => Token::Id(id)
     }
 }
@@ -541,7 +542,17 @@ fn read_number(stream: &mut CodeCursor) -> Result<Token, KtError> {
                 }
                 _ => {
                     stream.next();
-                    Token::Number(Number::Int(0))
+                    match stream.read_char(0) {
+                        'L' => {
+                            stream.next();
+                            Token::Number(Number::Long(0))
+                        },
+                        'F' | 'f' => {
+                            stream.next();
+                            Token::Number(Number::Float(0.0))
+                        },
+                        _ => Token::Number(Number::Int(0))
+                    }
                 }
             }
         }
@@ -604,7 +615,23 @@ fn read_float_or_int(stream: &mut CodeCursor) -> Token {
             exp = s;
         }
 
+        // TODO force float conversion
+        if stream.read_char(0) == 'f' || stream.read_char(0) == 'F' {
+            stream.next();
+        }
+
         return Token::Number(from_float_chars(&pre_dot, &post_dot, &exp));
+    }
+
+    // TODO force float conversion
+    if stream.read_char(0) == 'f' || stream.read_char(0) == 'F' {
+        stream.next();
+        return Token::Number(from_float_chars(&pre_dot, "", ""));
+    }
+
+    // TODO force Long conversion
+    if stream.read_char(0) == 'L' {
+        stream.next();
     }
 
     Token::Number(from_int_chars(10, &pre_dot))
@@ -852,6 +879,7 @@ mod tests {
         assert_eq!(Token::Number(Number::Float(1.2e1)), read_single_token("1.2e1"));
         assert_eq!(Token::Number(Number::Float(1.2e+1)), read_single_token("1.2e+1"));
         assert_eq!(Token::Number(Number::Float(1.2e-1)), read_single_token("1.2e-1"));
+        assert_eq!(Token::Number(Number::Float(0f32)), read_single_token("0f"));
     }
 
     #[test]

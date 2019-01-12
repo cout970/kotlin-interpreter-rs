@@ -92,6 +92,7 @@ mod tests {
     use crate::analyzer::semantic_rules::Checker;
 
     #[test]
+//    #[ignore]
     fn get_code() {
         let ref mut codes: Vec<(String, SourceCode)> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);
@@ -114,5 +115,6 @@ mod tests {
 
             index += 1;
         }
+        assert_ne!(0,0);
     }
 }

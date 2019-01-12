@@ -1,11 +1,12 @@
-use std::sync::Arc;
 use std::borrow::Borrow;
+use std::ops::Deref;
+use std::sync::Arc;
 
 use crate::Number;
 use crate::source_code::Span;
-use std::ops::Deref;
 
-pub const SPAN_NONE: Span = (0,0);
+pub const SPAN_NONE: Span = (0, 0);
+
 pub type Path = Vec<String>;
 
 #[derive(Clone, PartialEq, Debug)]
@@ -169,11 +170,19 @@ pub enum Expr {
         delegation_specifiers: Vec<DelegationSpecifier>,
         body: ClassBody,
     },
+    CallableRef {
+        name: String,
+        ty: UserType,
+        type_arguments: Vec<Type>,
+    },
+    Lambda(FunctionLiteral),
     Ref(String),
     Boolean(bool),
     Char(char),
     Number(Number),
     Null,
+    This,
+    Super,
     Throw(ExprRef),
     Return(Option<ExprRef>),
     Continue,
@@ -404,7 +413,7 @@ pub enum Member {
 #[derive(Clone, PartialEq, Debug)]
 pub struct AnonymousInitializer {
     pub span: Span,
-    pub body: Block
+    pub body: Block,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -412,7 +421,7 @@ pub struct SecondaryConstructor {
     pub modifiers: Vec<Modifier>,
     pub parameters: Vec<FunctionParameter>,
     pub delegation_call: DelegationCall,
-    pub body: Block,
+    pub body: Option<Block>,
 }
 
 #[derive(Clone, PartialEq, Debug)]

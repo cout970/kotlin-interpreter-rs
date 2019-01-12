@@ -48,8 +48,8 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
     let mut objects = vec![];
 
     loop {
-        let mut saved = s.save();
-        read_modifiers(s).unwrap();
+        let saved = s.save();
+        read_modifiers(s, ModifierSet::TopLevelObject).unwrap();
 
         if s.read_token(0) == Token::Fun ||
             s.read_token(0) == Token::Val ||
@@ -70,7 +70,7 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
 }
 
 fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::TopLevelObject)?;
 
     let obj = match s.read_token(0) {
         Token::Fun => {
@@ -164,14 +164,14 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
 }
 
 fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Option<PropertySetter>), KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
     let mut getter: Option<PropertyGetter> = None;
     let mut setter: Option<PropertySetter> = None;
 
     match s.read_token(0) {
         Token::Id(ref t) if t == "get" => {
             getter = Some(read_property_getter(s, modifiers)?);
-            let modifiers = read_modifiers(s)?;
+            let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
 
             match s.read_token(0) {
                 Token::Id(ref t) if t == "set" => {
@@ -182,7 +182,7 @@ fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Op
         }
         Token::Id(ref t) if t == "set" => {
             setter = Some(read_property_setter(s, modifiers)?);
-            let modifiers = read_modifiers(s)?;
+            let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
 
             match s.read_token(0) {
                 Token::Id(ref t) if t == "get" => {
@@ -223,7 +223,7 @@ fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
     let start = s.start();
     s.expect_keyword("set")?;
     if s.optional_expect(Token::LeftParen) {
-        let param_modifiers = read_modifiers(s)?;
+        let param_modifiers = read_modifiers(s, ModifierSet::Visibility)?;
         let param_name = Some(s.expect_id()?);
         let mut param_ty = None;
 
@@ -249,7 +249,12 @@ fn read_variable_decl(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntr
 }
 
 fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
-    let name = s.expect_id()?;
+    let name = if s.optional_expect(Token::Underscore) {
+        String::from("_")
+    } else {
+        s.expect_id()?
+    };
+
     let declared_type = if s.optional_expect(Token::Colon) {
         Some(read_type(s)?)
     } else {
@@ -374,7 +379,7 @@ fn read_expr_elvis(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 
 fn read_expr_infix_fun_call(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
-    let (dis, ops) = s.chain(&|s| s.expect_id(), &read_expr_range)?;
+    let (dis, ops) = s.chain_break(&|s| s.expect_id(), &read_expr_range)?;
     Ok(((start, s.end()), Expr::InfixFun { parameters: dis, functions: ops }))
 }
 
@@ -507,9 +512,31 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
 
 fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
-    let expr = read_expr_atomic(s)?;
+    let expr = match s.optional(&read_expr_callable_ref) {
+        Some(e) => e,
+        None => read_expr_atomic(s)?
+    };
     let ops = s.many0(&read_expr_postfix_operation)?;
     Ok(((start, s.end()), Expr::Postfix { expr: Arc::new(expr), postfix: ops }))
+}
+
+fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+    let start = s.start();
+    let ty = read_user_type(s)?;
+    s.expect(Token::DoubleColon)?;
+    let name = if s.optional_expect(Token::Class) {
+        String::from("class")
+    } else {
+        s.expect_id()?
+    };
+
+    let type_arguments = if s.read_token(0) == Token::LeftAngleBracket {
+        read_type_arguments(s)?
+    } else {
+        vec![]
+    };
+
+    Ok(((start, s.end()), Expr::CallableRef { ty, name, type_arguments }))
 }
 
 fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
@@ -520,6 +547,10 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
             let e = read_expresion(s)?;
             s.expect(Token::RightParen)?;
             Ok(e)
+        }
+        Token::LeftBrace => {
+            let lit = read_function_literal(s)?;
+            Ok(((start, s.end()), Expr::Lambda(lit)))
         }
         Token::Id(name) => {
             s.next();
@@ -536,6 +567,14 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         Token::Null => {
             s.next();
             Ok(((start, s.end()), Expr::Null))
+        }
+        Token::This => {
+            s.next();
+            Ok(((start, s.end()), Expr::This))
+        }
+        Token::Super => {
+            s.next();
+            Ok(((start, s.end()), Expr::Super))
         }
         Token::StringStart => {
             read_expr_string(s)
@@ -563,6 +602,11 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         }
         Token::Return => {
             s.next();
+            // Labels are not supported yet
+            if s.optional_expect(Token::At) {
+                // ignoring
+                s.next();
+            }
             Ok(((start, s.end()), Expr::Return(s.optional(&read_expresion).map(Arc::new))))
         }
         Token::Continue => {
@@ -578,7 +622,7 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
                 Token::Id(String::from("A variable")),
                 Token::Id(String::from("A literal (char, string, float, double, byte, short, int, long)")),
                 Token::True, Token::False,
-                Token::Null,
+                Token::Null, Token::This, Token::Super,
                 Token::If, Token::Throw, Token::Return, Token::Continue, Token::Break
             ])
         }
@@ -741,7 +785,6 @@ fn read_expr_when_entry(s: &mut TokenCursor) -> Result<WhenEntry, KtError> {
 }
 
 fn read_expr_when_condition(s: &mut TokenCursor) -> Result<WhenCondition, KtError> {
-    println!("Token: {}", s.read_token(0));
     match s.read_token(0) {
         Token::In => {
             s.next();
@@ -916,7 +959,7 @@ fn read_type_parameters_force(s: &mut TokenCursor) -> Result<Vec<TypeParameter>,
 }
 
 fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::TypeParameter)?;
     let name = s.expect_id()?;
     let mut user_type = None;
 
@@ -933,6 +976,13 @@ fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
 
 fn read_type(s: &mut TokenCursor) -> Result<Type, KtError> {
     let start = s.start();
+
+    // Ignore suspend modifier for now
+    if let Token::Id(name) = s.read_token(0) {
+        if name == "suspend" {
+            s.next();
+        }
+    }
     let modifiers = s.many0(&read_annotation)?;
     let reference = read_type_reference(s, false)?;
 
@@ -1046,7 +1096,27 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
         // java.lang.Int
         Token::Id(_) => {
             let ty = if !receiver {
-                read_user_type(s)?
+                let user_type = read_user_type(s)?;
+
+                // Function type with receiver a.k.a.
+                // Int.(Int)->Int
+                if s.read_token(0) == Token::Dot && s.read_token(1) == Token::LeftParen {
+                    let span = s.read_token_span(0);
+                    s.next();
+                    let func_ref = read_type_reference(s, false)?;
+
+                    if let TypeReference::Function(ft) = func_ref.as_ref() {
+                        let mut ft = ft.clone();
+                        ft.receiver = Some(Arc::new(TypeReference::UserType(user_type)));
+                        return Ok(Arc::new(TypeReference::Function(ft)));
+                    } else {
+                        return s.make_error(span, ParserError::ExpectedToken {
+                            expected: Token::Id(String::from("Function type with receiver")),
+                            found: Token::Id(format!("Type: {:?}", func_ref)),
+                        });
+                    }
+                }
+                user_type
             } else {
                 let mut sum = vec![];
                 sum.push(read_simple_user_type(s)?);
@@ -1102,6 +1172,26 @@ fn read_user_type(s: &mut TokenCursor) -> Result<UserType, KtError> {
     s.separated_by(Token::Dot, &read_simple_user_type)
 }
 
+//fn read_variable_name(s: &mut TokenCursor) -> Result<String, KtError> {
+//    match s.read_token(0) {
+//        Token::Id(name) => {
+//            s.next();
+//            Ok(name)
+//        }
+//        Token::This => {
+//            s.next();
+//            Ok(String::from("this"))
+//        }
+//        Token::Super => {
+//            s.next();
+//            Ok(String::from("super"))
+//        }
+//        _ => {
+//            s.make_error_expected_of(vec![Token::Id(String::from("A vraible name")), Token::This, Token::Super])
+//        }
+//    }
+//}
+
 fn read_simple_user_type(s: &mut TokenCursor) -> Result<SimpleUserType, KtError> {
     let name = s.expect_id()?;
     let mut type_params = vec![];
@@ -1153,19 +1243,35 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
     let save = s.save();
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::Statement)?;
 
-    if s.read_token(0) == Token::Fun ||
-        s.read_token(0) == Token::Val ||
-        s.read_token(0) == Token::Var ||
-        s.read_token(0) == Token::Class ||
-        s.read_token(0) == Token::Interface ||
-        s.read_token(0) == Token::Object ||
-        s.read_token(0) == Token::TypeAlias {
-        Ok(Statement::Decl(read_declaration(s, modifiers)?))
-    } else {
+    if s.read_token(0) == Token::Object {
+        // Special case for object, it could be an object declaration or an object literal,
+        // since object literal is more restrictive (doesnt have a name) it fails faster,
+        // also if the first option checked fails the error is ignored, so better ignore the error
+        // in an object literal (usually small) than an entire object class (usually bigger).
         s.restore(save);
-        Ok(Statement::Expr(read_expresion(s)?))
+        match read_expresion(s) {
+            Ok(e) => Ok(Statement::Expr(e)),
+            Err(_) => {
+                s.restore(save);
+                let modifiers = read_modifiers(s, ModifierSet::Statement)?;
+                Ok(Statement::Decl(read_declaration(s, modifiers)?))
+            }
+        }
+    } else {
+        if s.read_token(0) == Token::Fun ||
+            s.read_token(0) == Token::Val ||
+            s.read_token(0) == Token::Var ||
+            s.read_token(0) == Token::Class ||
+            s.read_token(0) == Token::Interface ||
+            s.read_token(0) == Token::TypeAlias {
+            Ok(Statement::Decl(read_declaration(s, modifiers)?))
+        } else {
+            // expressions don't have modifiers, so we go back to the original state
+            s.restore(save);
+            Ok(Statement::Expr(read_expresion(s)?))
+        }
     }
 }
 
@@ -1220,7 +1326,11 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 
     let name = s.expect_id()?;
     let type_parameters = read_type_parameters(s)?;
-    let primary_constructor = s.optional(&read_primary_constructor);
+    let primary_constructor = if s.read_token(0) == Token::LeftParen {
+        Some(read_primary_constructor(s)?)
+    } else {
+        None
+    };
 
     let mut annotations = vec![];
     let mut delegations = vec![];
@@ -1259,7 +1369,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, KtError> {
     //  (modifiers "constructor")? ("(" functionParameter{","} ")")
     fn primary_constructor_start(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
-        let m = read_modifiers(s)?;
+        let m = read_modifiers(s, ModifierSet::Visibility)?;
         s.expect_keyword("constructor")?;
         Ok(m)
     }
@@ -1286,7 +1396,11 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
         DelegationCall::None
     };
 
-    let body = read_block(s)?;
+    let body = if s.read_token(0) == Token::LeftParen {
+        Some(read_block(s)?)
+    } else {
+        None
+    };
 
     Ok(SecondaryConstructor {
         modifiers,
@@ -1298,8 +1412,14 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
 
 fn read_delegation_call(s: &mut TokenCursor) -> Result<DelegationCall, KtError> {
     let del = match s.read_token(0) {
-        Token::This => DelegationCall::This(read_value_arguments(s)?),
-        Token::Super => DelegationCall::Super(read_value_arguments(s)?),
+        Token::This => {
+            s.next();
+            DelegationCall::This(read_value_arguments(s)?)
+        }
+        Token::Super => {
+            s.next();
+            DelegationCall::Super(read_value_arguments(s)?)
+        }
         _ => {
             return s.make_error_expected_of(vec![Token::This, Token::Super]);
         }
@@ -1404,9 +1524,9 @@ fn read_annotated_lambda(s: &mut TokenCursor) -> Result<AnnotatedLambda, KtError
 fn read_function_literal(s: &mut TokenCursor) -> Result<FunctionLiteral, KtError> {
     fn read_args(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
         // TODO add variable destructuring
-        let parameters = s.separated_by(Token::Comma, &read_variable_declaration)?;
+        let parameters = s.separated_by(Token::Comma, &read_variable_decl)?;
         s.expect(Token::LeftArrow)?;
-        Ok(parameters)
+        Ok(parameters.into_iter().flatten().collect::<Vec<_>>())
     }
 
     s.expect(Token::LeftBrace)?;
@@ -1466,7 +1586,7 @@ fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 }
 
 fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::ClassMember)?;
 
     let obj = match s.read_token(0) {
         Token::Fun => {
@@ -1489,6 +1609,10 @@ fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
         }
         Token::Id(ref keyword) if keyword == "constructor" => {
             Member::SecondaryConstructor(read_secondary_constructor(s, modifiers)?)
+        }
+        Token::Id(ref keyword) if keyword == "companion" => {
+            s.next();
+            Member::CompanionObject(read_companion_object(s, modifiers)?)
         }
         _ => {
             return s.make_error_expected_of(vec![
@@ -1521,7 +1645,7 @@ fn read_enum_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 }
 
 fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::EnumEntry)?;
     let name = s.expect_id()?;
 
     let mut value_arguments = vec![];
@@ -1580,13 +1704,57 @@ fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, 
         delegations = s.separated_by(Token::Comma, &read_delegation_specifier)?;
     }
 
-    let body = s.optional(&read_class_body);
+
+    let body = if s.read_token(0) == Token::LeftBrace {
+        Some(read_class_body(s)?)
+    } else {
+        None
+    };
 
     Ok(Object {
         span: (start, s.end()),
         modifiers,
         name,
         primary_constructor,
+        annotations,
+        delegations,
+        body,
+    })
+}
+
+
+/**
+ * Companion must already be skipped
+ */
+fn read_companion_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, KtError> {
+//  companionObject
+//  :  modifiers "companion" "object" SimpleName? (":" delegationSpecifier{","})? classBody?
+//  ;
+
+    let start = s.start();
+    s.expect(Token::Object)?;
+
+    let name = s.optional(&|s| s.expect_id()).unwrap_or(String::new());
+
+    let mut annotations = vec![];
+    let mut delegations = vec![];
+
+    if s.optional_expect(Token::Colon) {
+        annotations = read_annotations(s)?;
+        delegations = s.separated_by(Token::Comma, &read_delegation_specifier)?;
+    }
+
+    let body = if s.read_token(0) == Token::LeftBrace {
+        Some(read_class_body(s)?)
+    } else {
+        None
+    };
+
+    Ok(Object {
+        span: (start, s.end()),
+        modifiers,
+        name,
+        primary_constructor: None,
         annotations,
         delegations,
         body,
@@ -1620,7 +1788,7 @@ fn read_value_parameters(s: &mut TokenCursor) -> Result<Vec<FunctionParameter>, 
 }
 
 fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtError> {
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::FunctionParameter)?;
     let mut mutability = ParameterMutability::Default;
 
     if s.optional_expect(Token::Val) {
@@ -1675,7 +1843,7 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
 
 fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
     let start = s.start();
-    let modifiers = read_modifiers(s)?;
+    let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
     s.expect(Token::Package)?;
     let path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     s.semi();
@@ -1683,39 +1851,138 @@ fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
     Ok(PackageHeader { span: (start, s.end()), modifiers, path })
 }
 
-fn read_modifiers(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
-    s.many0(&|s| {
-        let start = s.save();
-        match s.read_token(0) {
-            Token::Id(name) => {
-                s.next();
-                // TODO add enum modifier
-                match name.as_str() {
-                    /*"abstract" |*/ /*"final" |*/ "enum" | /*"open" |*/ "annotation" | "sealed" | "data" | // classModifier
-                    "override" | "open" | "final" | "abstract" | "lateinit" | // memberModifier
-                    "private" | "protected" | "public" | "internal" | // accessModifier
-                    "in" | "out" | // varianceAnnotation
-                    "noinline" | "crossinline" | "vararg" | // parameterModifier
-                    "reified" | // typeParameterModifier
-                    "tailrec" | "operator" | "infix" | "inline" | "external" | "suspend" | // functionModifier
-                    "const" | // propertyModifier
-                    "expect" | "actual" // multiPlatformModifier
-                    => Ok(Modifier { name }),
-                    _ => s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                        found: Token::Id(name.to_owned())
-                    })
-                }
+#[derive(Copy, Clone)]
+enum ModifierSet {
+    TopLevelObject,
+    TypeParameter,
+    Statement,
+    Visibility,
+    ClassMember,
+    EnumEntry,
+    FunctionParameter,
+}
+
+fn read_modifiers(s: &mut TokenCursor, set: ModifierSet) -> Result<Vec<Modifier>, KtError> {
+    let mut modifiers = vec![];
+    loop {
+        if s.read_token(0) == Token::At {
+            read_annotations(s)?;
+        }
+        let save = s.save();
+        match read_modifier2(s, set) {
+            Ok(it) => {
+                modifiers.push(it);
             }
-            Token::In => Ok(Modifier { name: String::from("in") }),
-            _ => {
-                let tk = s.read_token(0);
-                s.next();
-                s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                    found: tk
+            Err(e) => {
+                s.restore(save);
+                break;
+            }
+        }
+    }
+
+    Ok(modifiers)
+}
+
+fn read_modifier2(s: &mut TokenCursor, set: ModifierSet) -> Result<Modifier, KtError> {
+    let start = s.save();
+    let valid_names: Vec<&'static str> = match set {
+        ModifierSet::TopLevelObject => {
+            vec![
+                "abstract", "final", "enum", "open", "annotation", "sealed", "data", "lateinit",
+                "private", "protected", "public", "internal",
+                "tailrec", "operator", "infix", "inline", "external", "suspend",
+                "const", "expect", "actual"
+            ]
+        }
+        ModifierSet::TypeParameter => {
+            vec!["in", "out", "reified"]
+        }
+        ModifierSet::Statement => {
+            vec!["override", "abstract", "final", "enum", "open", "annotation", "sealed", "data", "lateinit",
+                 "tailrec", "operator", "infix", "inline", "suspend"]
+        }
+        ModifierSet::Visibility => {
+            vec!["private", "protected", "public", "internal"]
+        }
+        ModifierSet::ClassMember => {
+            vec![
+                "abstract", "final", "enum", "override", "open", "annotation", "sealed", "data", "lateinit",
+                "private", "protected", "public", "internal",
+                "tailrec", "operator", "infix", "inline", "external", "suspend",
+                "const", "expect", "actual"
+            ]
+        }
+        ModifierSet::EnumEntry => {
+            vec!["inline"]
+        }
+        ModifierSet::FunctionParameter => {
+            vec![
+                "noinline", "crossinline", "vararg", "override",
+                "private", "protected", "public", "internal"
+            ]
+        }
+    };
+
+    if let Token::Id(name) = s.read_token(0) {
+        s.next();
+        if valid_names.contains(&name.as_str()) {
+            Ok(Modifier { name })
+        } else {
+            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
+                found: Token::Id(name)
+            })
+        }
+    } else if let Token::In = s.read_token(0) {
+        s.next();
+        if valid_names.contains(&"in") {
+            Ok(Modifier { name: String::from("in") })
+        } else {
+            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
+                found: Token::In
+            })
+        }
+    } else {
+        let tk = s.read_token(0);
+        s.next();
+        let span = (start, s.end());
+        s.make_error(span, ParserError::ExpectedTokenId {
+            found: tk
+        })
+    }
+}
+
+fn read_modifier(s: &mut TokenCursor) -> Result<Modifier, KtError> {
+    let start = s.save();
+    match s.read_token(0) {
+        Token::Id(name) => {
+            s.next();
+            // TODO add enum modifier
+            match name.as_str() {
+                /*"abstract" |*/ /*"final" |*/ "enum" | /*"open" |*/ "annotation" | "sealed" | "data" | // classModifier
+                "override" | "open" | "final" | "abstract" | "lateinit" | // memberModifier
+                "private" | "protected" | "public" | "internal" | // accessModifier
+                "in" | "out" | // varianceAnnotation
+                "noinline" | "crossinline" | "vararg" | // parameterModifier
+                "reified" | // typeParameterModifier
+                "tailrec" | "operator" | "infix" | "inline" | "external" | "suspend" | // functionModifier
+                "const" | // propertyModifier
+                "suspend" | // coroutine
+                "expect" | "actual" // multiPlatformModifier
+                => Ok(Modifier { name }),
+                _ => s.make_error((start, s.save()), ParserError::ExpectedTokenId {
+                    found: Token::Id(name.to_owned())
                 })
             }
         }
-    })
+        Token::In => Ok(Modifier { name: String::from("in") }),
+        _ => {
+            let tk = s.read_token(0);
+            s.next();
+            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
+                found: tk
+            })
+        }
+    }
 }
 
 fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> {
@@ -1885,6 +2152,7 @@ mod tests {
 
     #[test]
     fn test_expr() {
+        println!("{:?}", get_ast("g.color = Color(0f, 0f, 0f, 0f)", read_expresion));
         println!("{:?}", get_ast("a", read_expresion));
         println!("{:?}", get_ast("(a)", read_expresion));
         println!("{:?}", get_ast("a + b", read_expresion));
@@ -1907,6 +2175,7 @@ mod tests {
         println!("{:?}", get_ast("a += 5", read_expresion));
         println!("{:?}", get_ast("list[5]!!", read_expresion));
         println!("{:?}", get_ast("list[5]!!.get()?.getOther() ?: 1", read_expresion));
+        println!("{:?}", get_ast("MouseClickEvent::class.java", read_expresion));
         println!("{:?}", get_ast(r#"
             when(5) {
                 1 -> "1"
