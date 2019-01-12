@@ -711,7 +711,7 @@ fn read_expr_when_condition(s: &mut TokenCursor) -> Result<WhenCondition, KtErro
         Token::In => {
             s.next();
             Ok(WhenCondition::In { negated: false, expr: read_expresion(s)? })
-        },
+        }
         Token::NotIn => {
             s.next();
             Ok(WhenCondition::In { negated: true, expr: read_expresion(s)? })
@@ -905,13 +905,57 @@ fn read_receiver_type(s: &mut TokenCursor) -> Result<Type, KtError> {
 }
 
 fn read_annotations(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError> {
-    s.many0(&read_annotation)
+    // (annotation | annotationList)*
+
+    fn or(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError> {
+        match s.optional(&read_annotation) {
+            Some(it) => Ok(vec![it]),
+            None => read_annotation_list(s)
+        }
+    }
+
+    s.many0(&or)
+        .map(|lists| lists.into_iter().flatten().collect::<Vec<_>>())
 }
 
 fn read_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
+    // "@" (annotationUseSiteTarget ":")? unescapedAnnotation
     s.expect(Token::At)?;
-    let names = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
-    Ok(Annotation { names })
+
+    let use_site_target = if s.read_token(1) == Token::Colon {
+        let id = s.expect_id()?;
+        s.expect(Token::Colon)?;
+        Some(id)
+    } else {
+        None
+    };
+
+    let mut annotation = read_unescaped_annotation(s)?;
+    annotation.use_site_target = use_site_target;
+    Ok(annotation)
+}
+
+fn read_annotation_list(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError> {
+    // "@" (annotationUseSiteTarget ":")? "[" unescapedAnnotation+ "]"
+    s.expect(Token::At)?;
+
+    let use_site_target = if s.read_token(1) == Token::Colon {
+        let id = s.expect_id()?;
+        s.expect(Token::Colon)?;
+        Some(id)
+    } else {
+        None
+    };
+
+    s.expect(Token::LeftBracket)?;
+    let mut annotations = s.many1(&read_unescaped_annotation)?;
+
+    for x in &mut annotations {
+        x.use_site_target = use_site_target.clone();
+    }
+    s.expect(Token::RightBracket)?;
+
+    Ok(annotations)
 }
 
 fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeReference>, KtError> {
@@ -1082,7 +1126,6 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
 }
 
 fn read_declaration(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Declaration, KtError> {
-
     let res = match s.read_token(0) {
         Token::Fun => Declaration::Function(read_function(s, modifiers)?),
         Token::Val | Token::Var => Declaration::Property(read_property(s, modifiers)?),
@@ -1644,9 +1687,22 @@ fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> 
 }
 
 fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
+    // SimpleName{"."} typeArguments? valueArguments?
     let names = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
-    // TODO
-    Ok(Annotation { names })
+
+    let type_arguments = if s.read_token(0) == Token::LeftAngleBracket {
+        read_type_arguments(s)?
+    } else {
+        vec![]
+    };
+
+    let value_arguments = if s.read_token(0) == Token::LeftParen {
+        read_value_arguments(s)?
+    } else {
+        vec![]
+    };
+
+    Ok(Annotation { use_site_target: None, names, type_arguments, value_arguments })
 }
 
 #[cfg(test)]
@@ -1813,6 +1869,11 @@ mod tests {
     fn test_read_typealias() {
         println!("{:?}", get_ast("public typealias MyList = List", read_statement));
         println!("{:?}", get_ast("typealias Set<T> = Hashmap<T, Any>", read_statement));
+    }
+
+    #[test]
+    fn test_read_annotation() {
+        println!("{:?}", get_ast("@Test @Test2 @file:Test3 @param:[Test] @field:[Test1 Test2]", read_annotations));
     }
 
     #[test]

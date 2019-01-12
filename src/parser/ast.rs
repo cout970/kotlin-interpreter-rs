@@ -31,8 +31,9 @@ pub struct FileAnnotation {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Annotation {
     pub names: Vec<String>,
-//    type_arguments: Vec<Type>,
-//    value_arguments: Option<>,
+    pub use_site_target: Option<String>,
+    pub type_arguments: Vec<Type>,
+    pub value_arguments: Vec<ValueArgument>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
