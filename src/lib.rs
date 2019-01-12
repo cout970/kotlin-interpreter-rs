@@ -1,6 +1,7 @@
 // Development only {
 // cargo watch -s 'clear && cargo test --color always 2>&1'
 // cargo watch -c -q -x test
+// cargo watch -c -q -s 'cargo rustc -- -Awarnings -Zno-codegen && cargo test'
 #![allow(dead_code)]
 // }
 
@@ -19,10 +20,14 @@ use crate::source_code::SourceCode;
 use crate::tokenizer::get_code_cursor;
 use crate::tokenizer::read_all_tokens;
 
-pub mod tokenizer;
+pub mod ast;
 pub mod source_code;
-pub mod errors;
+pub mod tokenizer;
 pub mod parser;
+pub mod analyzer;
+pub mod interpreter;
+pub mod errors;
+mod test_utils;
 
 // Lang references:
 // - https://kotlinlang.org/docs/kotlin-docs.pdf
@@ -73,11 +78,11 @@ fn get_ast<F, T>(c: &str, func: F) -> T
     let mut code_cursor = get_code_cursor(code.clone());
     let tks = read_all_tokens(&mut code_cursor).unwrap();
 
+    // Debug
     for (_, x) in &tks {
         print!("{} ", x);
     }
     println!();
-//    stdout().flush();
 
     let mut token_cursor = get_token_cursor(code.clone(), tks);
     token_cursor.complete(&func).unwrap()

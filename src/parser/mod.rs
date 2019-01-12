@@ -1,10 +1,11 @@
+use crate::ast::KotlinFile;
 use crate::errors::KtError;
 use crate::errors::ParserError;
+use crate::parser::file::read_file;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::tokenizer::Token;
 
-mod ast;
 mod file;
 
 pub struct TokenCursor {
@@ -15,6 +16,10 @@ pub struct TokenCursor {
 
 pub fn get_token_cursor(code: SourceCode, tokens: Vec<(Span, Token)>) -> TokenCursor {
     TokenCursor { code, tokens, pos: 0 }
+}
+
+pub fn parse_file(cursor: &mut TokenCursor) -> Result<KotlinFile, KtError> {
+    cursor.complete(&read_file)
 }
 
 impl TokenCursor {
@@ -238,9 +243,15 @@ impl TokenCursor {
             let span = self.read_token_span(0);
             let found = self.read_token(0);
 
-            return self.make_error(
-                span, ParserError::ExpectedToken { expected: tk, found },
-            );
+            if tk == Token::EOF {
+                return self.make_error(
+                    span, ParserError::UnexpectedToken { found },
+                );
+            } else {
+                return self.make_error(
+                    span, ParserError::ExpectedToken { expected: tk, found },
+                );
+            }
         }
     }
 

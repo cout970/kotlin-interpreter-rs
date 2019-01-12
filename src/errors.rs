@@ -4,12 +4,13 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 use std::fmt::Write;
 
+use crate::ast::Modifier;
+use crate::Number;
 use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::source_code::to_str;
 use crate::tokenizer::Token;
-use crate::Number;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
@@ -24,16 +25,29 @@ pub enum TokenizerError {
 
 #[derive(Debug, Clone)]
 pub enum ParserError {
+    UnexpectedToken { found: Token },
     ExpectedToken { expected: Token, found: Token },
     ExpectedTokenId { found: Token },
     ExpectedTokenOf { found: Token, options: Vec<Token> },
 }
 
+#[derive(Debug, Clone)]
+pub enum AnalyserError {
+    InvalidModifierUsage { modifier: Modifier, context: String },
+    DuplicatedModifier { modifier: Modifier },
+    ConflictingImport { name: String },
+}
+
+#[derive(Debug, Clone)]
+pub enum InterpreterError {}
+
 #[derive(Clone)]
 pub enum KtError {
     Tokenizer { code: SourceCode, span: Span, info: TokenizerError },
     Parser { code: SourceCode, span: Span, info: ParserError },
-    Unimplemented
+    Analyser { code: SourceCode, span: Span, info: AnalyserError },
+    Interpreter { code: SourceCode, span: Span, info: InterpreterError },
+    Unimplemented,
 }
 
 impl Display for KtError {
@@ -64,6 +78,28 @@ impl Display for KtError {
                 // Reset color
                 write!(f, "\x1B[0m")?;
             }
+            KtError::Analyser { code, span, info } => {
+                // Use color red
+                write!(f, "\x1B[31m")?;
+
+                write!(f, "\n\nAn error occurred: \n")?;
+                print_analyser_error(f, code, *span, info)?;
+                write!(f, "\n\n")?;
+
+                // Reset color
+                write!(f, "\x1B[0m")?;
+            }
+            KtError::Interpreter { code, span, info } => {
+                // Use color red
+                write!(f, "\x1B[31m")?;
+
+                write!(f, "\n\nAn error occurred: \n")?;
+                print_interpreter_error(f, code, *span, info)?;
+                write!(f, "\n\n")?;
+
+                // Reset color
+                write!(f, "\x1B[0m")?;
+            }
         }
         Ok(())
     }
@@ -79,57 +115,76 @@ fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &T
     match error {
         TokenizerError::UnknownCharacter(c) => {
             write!(f, "Found unknown character: '{}' ({})\n", *c as char, *c)?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::UnsupportedLiteralPrefix(c) => {
             write!(f, "Unsupported number prefix: 0{}\n", *c)?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::ExpectedEndOfString => {
             write!(f, "Found end of the line while reading a string\n")?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::ExpectedEndOfChar => {
             write!(f, "Found expecting end of character literal\n")?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::UnclosedComment => {
             write!(f, "Found unclosed comment\n")?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::InvalidEscapeChar(c) => {
             write!(f, "Found invalid escape character: '{}' ({})\n", *c, *c as u32)?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         TokenizerError::ExpectedEndOfEscapedIdentifier => {
             write!(f, "I was expecting a ` to end the escaped identifier: \n")?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
+    }
+
+    write!(f, "{}", print_code_location(&to_str(code), span))?;
+    Ok(())
+}
+
+fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &AnalyserError) -> Result<(), Error> {
+    match error {
+        AnalyserError::InvalidModifierUsage { modifier, context } => {
+            write!(f, "Modifier '{}' is not applicable in {}\n", modifier.name, context)?;
+        }
+        AnalyserError::ConflictingImport { name } => {
+            write!(f, "Conflicting import, imported name '{}' is ambiguous\n", name)?;
+        }
+        AnalyserError::DuplicatedModifier { modifier } => {
+            write!(f, "Duplicated modifier '{}'\n", modifier.name)?;
+        }
+    }
+
+    write!(f, "{}", print_code_location(&to_str(code), span))?;
+    Ok(())
+}
+
+fn print_interpreter_error(f: &mut Write, code: &SourceCode, span: Span, error: &InterpreterError) -> Result<(), Error> {
+    match error {
+        _ => {}
     }
 
     Ok(())
 }
 
-
 fn print_parser_error(f: &mut Write, code: &SourceCode, span: Span, error: &ParserError) -> Result<(), Error> {
     match error {
+        ParserError::UnexpectedToken { found } => {
+            write!(f, "Found unexpected token: {}\n", found)?;
+        }
         ParserError::ExpectedToken { expected, found } => {
             write!(f, "Expecting: {} but found: {}\n", expected, found)?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         ParserError::ExpectedTokenId { found } => {
             write!(f, "Expecting identifier but found: {}\n", found)?;
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
         ParserError::ExpectedTokenOf { found, options } => {
             write!(f, "Found token {} but I was expecting one of:\n", found)?;
             for x in options {
                 write!(f, " - {}\n", x)?;
             }
-            write!(f, "{}", print_code_location(&to_str(code), span))?;
         }
     }
 
+    write!(f, "{}", print_code_location(&to_str(code), span))?;
     Ok(())
 }
 

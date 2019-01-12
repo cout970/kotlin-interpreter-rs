@@ -1,3 +1,5 @@
+external fun println(x: Any)
+
 fun main() {
     println(fibonacci(12))
 }

@@ -23,16 +23,17 @@ pub fn to_str(code: &SourceCode) -> Cow<str> {
 
 
 pub fn print_code_location(input: &str, span: Span) -> String {
-    if input.is_empty() {
-        return String::from("Empty");
-    }
-
     let byte_input: &[u8] = input.as_bytes();
     let marker_start = span.0 as usize;
     let marker_end = span.1 as usize;
+    let byte_input_len = byte_input.len() - SOURCE_CODE_PADDING;
 
-    let mut line_start = marker_start.min(byte_input.len() - 1).max(0);
-    let mut line_end = marker_end.min(byte_input.len() - 1).max(0);
+    if byte_input_len <= 0 {
+        return String::from("No code");
+    }
+
+    let mut line_start = marker_start.min(byte_input_len - 1).max(0);
+    let mut line_end = marker_end.min(byte_input_len - 1).max(0);
 
     while line_start > 0 {
         if byte_input[line_start] == b'\n' {
@@ -42,7 +43,7 @@ pub fn print_code_location(input: &str, span: Span) -> String {
         line_start -= 1;
     }
 
-    while line_end < byte_input.len() {
+    while line_end < byte_input_len {
         if byte_input[line_end] == b'\n' {
             break;
         }
