@@ -25,6 +25,7 @@ pub enum Opcode {
 }
 
 #[test]
+#[ignore]
 fn vm_test() {
     let block = CodeBlock {
         labels: HashMap::new(),

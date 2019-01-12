@@ -1,7 +1,8 @@
-use crate::errors::KtError;
-use crate::source_code::from_str;
 use crate::analyzer::semantic_rules::Checker;
+use crate::analyzer::semantic_rules::Symbol;
+use crate::errors::KtError;
 use crate::parser::Parser;
+use crate::source_code::from_str;
 use crate::tokenizer::Tokenizer;
 
 pub fn assert_fails(code: &str) -> Vec<KtError> {
@@ -19,17 +20,16 @@ pub fn assert_fails(code: &str) -> Vec<KtError> {
         }
     };
 
-    println!("Ast: {:?}\n\n", ast);
+//    println!("Ast: {:?}\n\n", ast);
 
-    let mut ctx = Checker::new(code.clone());
-    ctx.check(ast);
+    let ctx = Checker::new(code.clone(), ast);
 
     let errors = ctx.get_errors();
     assert!(errors.len() > 0);
     errors
 }
 
-pub fn assert_success(code: &str) {
+pub fn assert_success(code: &str) -> Vec<Symbol> {
     let code = from_str(code);
 
     let ref mut tokenizer = Tokenizer::new(code.clone());
@@ -38,10 +38,9 @@ pub fn assert_success(code: &str) {
     let mut parser = Parser::new(code.clone(), tokens);
     let ref mut ast = parser.parse_file().unwrap();
 
-    println!("Ast: {:?}\n\n", ast);
+//    println!("Ast: {:?}\n\n", ast);
 
-    let mut ctx = Checker::new(code.clone());
-    ctx.check(ast);
+    let ctx = Checker::new(code.clone(), ast);
 
     let errors = ctx.get_errors();
     for x in &errors {
@@ -49,4 +48,6 @@ pub fn assert_success(code: &str) {
     }
 
     assert_eq!(errors.len(), 0);
+
+    ctx.get_symbols()
 }

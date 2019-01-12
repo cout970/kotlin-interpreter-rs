@@ -1,24 +1,27 @@
 use std::collections::HashSet;
 
-use crate::parser::ast::*;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
+use crate::parser::ast::*;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
 pub struct Checker {
     code: SourceCode,
-    pub errors: Vec<(Span, AnalyserError)>,
+    errors: Vec<(Span, AnalyserError)>,
+    imports: Vec<Path>,
     symbols: Vec<Symbol>,
 }
 
-struct Symbol {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Symbol {
     name: String,
     symbol_type: SymbolType,
-    path: String,
+    path: Path,
 }
 
-enum SymbolType {
+#[derive(Clone, Debug, PartialEq)]
+pub enum SymbolType {
     Type,
     Class,
     Function,
@@ -26,13 +29,15 @@ enum SymbolType {
 }
 
 impl Checker {
-    pub fn new(code: SourceCode) -> Self {
-        Checker { code, errors: vec![], symbols: vec![] }
+    pub fn new(code: SourceCode, ast: &KotlinFile) -> Self {
+        let mut c = Checker { code, errors: vec![], imports: vec![], symbols: vec![] };
+        c.check(ast);
+        c
     }
 
-    pub fn check(&mut self, ast: &mut KotlinFile) {
+    fn check(&mut self, ast: &KotlinFile) {
         check_preamble(self, &ast.preamble);
-        for x in &mut ast.objects {
+        for x in &ast.objects {
             check_top_level_object(self, x);
         }
     }
@@ -43,6 +48,12 @@ impl Checker {
                 KtError::Analyser { code: self.code.clone(), span: *span, info: info.clone() }
             )
             .collect()
+    }
+
+    pub fn get_symbols(&self) -> Vec<Symbol> {
+        self.symbols.iter()
+            .map(|it| it.clone())
+            .collect::<Vec<_>>()
     }
 }
 
@@ -73,6 +84,8 @@ fn check_preamble(ctx: &mut Checker, preamble: &Preamble) {
             }
         };
 
+        ctx.imports.push(x.path.clone());
+
         if names.contains(&name) {
             ctx.errors.push(((0, 0), AnalyserError::ConflictingImport {
                 name: name.clone(),
@@ -82,17 +95,17 @@ fn check_preamble(ctx: &mut Checker, preamble: &Preamble) {
     }
 }
 
-fn check_top_level_object(ctx: &mut Checker, obj: &mut TopLevelObject) {
+fn check_top_level_object(ctx: &mut Checker, obj: &TopLevelObject) {
     match obj {
-        TopLevelObject::Class(it) => { check_class(ctx, it); }
-        TopLevelObject::Object(it) => {}
-        TopLevelObject::Function(it) => { check_function(ctx, it) }
-        TopLevelObject::Property(it) => {}
-        TopLevelObject::TypeAlias(it) => {}
+        TopLevelObject::Class(it) => { check_class(ctx, it, vec![]); }
+        TopLevelObject::Object(it) => { check_object(ctx, it, vec![]); }
+        TopLevelObject::Function(it) => { check_function(ctx, it, vec![]); }
+        TopLevelObject::Property(it) => { check_property(ctx, it, vec![]); }
+        TopLevelObject::TypeAlias(it) => { check_typealias(ctx, it, vec![]); }
     }
 }
 
-fn check_class(ctx: &mut Checker, class: &mut Class) {
+fn check_class(ctx: &mut Checker, class: &Class, path: Path) {
     report_duplicated_modifiers(ctx, &class.modifiers);
     // TODO check modifiers are applicable to a class
     // check modifiers are applicable to the correct class type: 'enum interface'
@@ -101,9 +114,36 @@ fn check_class(ctx: &mut Checker, class: &mut Class) {
     let types_parameters = &class.type_parameters;
     // duplicated delegation specifier
     // missing enum body, for enum classes
+
+    ctx.symbols.push(Symbol {
+        name: class.name.clone(),
+        symbol_type: SymbolType::Class,
+        path,
+    });
 }
 
-fn check_function(ctx: &mut Checker, fun: &mut Function) {
+fn check_object(ctx: &mut Checker, obj: &Object, path: Path) {
+    report_duplicated_modifiers(ctx, &obj.modifiers);
+    // TODO check modifiers are applicable to a class
+    // check modifiers are applicable to the correct class type: 'enum object'
+
+    if let Some(it) = &obj.body {
+        let mut path = path.clone();
+        path.push(obj.name.clone());
+
+        for member in &it.members {
+            check_member(ctx, member, path.clone());
+        }
+    }
+
+    ctx.symbols.push(Symbol {
+        name: obj.name.clone(),
+        symbol_type: SymbolType::Class,
+        path,
+    });
+}
+
+fn check_function(ctx: &mut Checker, fun: &Function, path: Path) {
     report_duplicated_modifiers(ctx, &fun.modifiers);
     // Duplicated type parameters
     // Types in first type parameters
@@ -111,7 +151,53 @@ fn check_function(ctx: &mut Checker, fun: &mut Function) {
 
     // duplicated names in parameters
     // several varargs
-    //
+    ctx.symbols.push(Symbol {
+        name: fun.name.clone(),
+        symbol_type: SymbolType::Function,
+        path,
+    });
+}
+
+fn check_property(ctx: &mut Checker, prop: &Property, path: Path) {
+    report_duplicated_modifiers(ctx, &prop.modifiers);
+    // Duplicated type parameters
+    // Types in first type parameters
+//    fun.type_parameters;
+
+    if prop.declarations.len() != 1 {
+        ctx.errors.push((prop.span, AnalyserError::DestructuringInTopLevel));
+    }
+
+    ctx.symbols.push(Symbol {
+        name: prop.declarations.first().unwrap().name.clone(),
+        symbol_type: SymbolType::Property,
+        path,
+    });
+}
+
+fn check_typealias(ctx: &mut Checker, alias: &TypeAlias, path: Path) {
+    report_duplicated_modifiers(ctx, &alias.modifiers);
+    // Duplicated type parameters
+    // Types in first type parameters
+
+    ctx.symbols.push(Symbol {
+        name: signature_of_type(&alias.ty),
+        symbol_type: SymbolType::Type,
+        path,
+    });
+}
+
+fn check_member(ctx: &mut Checker, member: &Member, path: Path) {
+    match member {
+        Member::CompanionObject(it) => { check_object(ctx, it, path); }
+        Member::Object(it) => { check_object(ctx, it, path); }
+        Member::Function(it) => { check_function(ctx, it, path); }
+        Member::Property(it) => { check_property(ctx, it, path); }
+        Member::Class(it) => { check_class(ctx, it, path); }
+        Member::TypeAlias(it) => { check_typealias(ctx, it, path); }
+        Member::AnonymousInitializer(_) => {}
+        Member::SecondaryConstructor(_) => {}
+    }
 }
 
 fn report_duplicated_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
@@ -123,6 +209,76 @@ fn report_duplicated_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
             }));
         }
         names.insert(x.name.clone());
+    }
+}
+
+fn signature_of_type(ty: &Type) -> String {
+    signature_of_ref(&ty.reference)
+}
+
+fn signature_of_ref(ty: &TypeReference) -> String {
+    match &ty {
+        TypeReference::Function(fun) => {
+            // F[Receiver.(Param1,Param2)->Return]
+            let mut val = String::new();
+
+            val.push_str("F[");
+            if let Some(receiver) = &fun.receiver {
+                val.push_str(&signature_of_ref(receiver));
+                val.push('.');
+            }
+
+            val.push('(');
+            for i in 0..fun.parameters.len() {
+                val.push_str(&signature_of_type(&fun.parameters[i]));
+
+                if i != fun.parameters.len() - 1 {
+                    val.push(',');
+                }
+            }
+            val.push_str(")->");
+            val.push_str(&signature_of_ref(&fun.return_type));
+            val.push_str("]");
+            val
+        }
+        TypeReference::UserType(user_ty) => {
+            // T[A.B.C<D,E>]
+            let mut val = String::new();
+
+            val.push_str("T[");
+            for i in 0..user_ty.len() {
+                val.push_str(&user_ty[i].name);
+
+                let params = &user_ty[i].type_params;
+                if !params.is_empty() {
+                    val.push('<');
+                    for j in 0..params.len() {
+                        match &params[j] {
+                            CallSiteTypeParams::Projection => {
+                                val.push('*');
+                            }
+                            CallSiteTypeParams::Type(ty) => {
+                                val.push_str(&signature_of_type(ty));
+                            }
+                        }
+
+                        if j != params.len() - 1 {
+                            val.push(',');
+                        }
+                    }
+                    val.push('>');
+                }
+
+                if i != params.len() - 1 {
+                    val.push('.');
+                }
+            }
+            val.push_str("]");
+            val
+        }
+        TypeReference::Nullable(base) => {
+            format!("N[{}]", signature_of_ref(&base))
+        }
     }
 }
 
@@ -153,5 +309,12 @@ mod tests {
         println!("{:?}", assert_fails("private private class Test"));
         println!("{:?}", assert_success("class Test(){}"));
         println!("{:?}", assert_success("class Test(): Iterable"));
+        assert_ne!(0, 0);
+    }
+
+    #[test]
+    fn test_files() {
+        println!("{:?}", assert_success("class Test"));
+        assert_ne!(0, 0);
     }
 }

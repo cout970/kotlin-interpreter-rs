@@ -719,6 +719,8 @@ fn trim_comments(stream: &mut CodeCursor) -> Result<(), KtError> {
                 }
 
                 if c0 == b'*' && c1 == b'/' {
+                    stream.next();
+                    stream.next();
                     break;
                 }
                 stream.next();

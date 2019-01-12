@@ -42,7 +42,7 @@ pub enum Number {
     Long(i64),
 }
 
-fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
+fn get_all_source_files(path: &Path, result: &mut Vec<(String, SourceCode)>) {
     let file = File::open(path);
     let mut file = if let Ok(f) = file { f } else { return; };
 
@@ -60,7 +60,8 @@ fn get_all_source_files(path: &Path, result: &mut Vec<SourceCode>) {
             if ext == "kt" {
                 let ref mut string = String::new();
                 let size = file.read_to_string(string).unwrap();
-                result.push(from_str(&string));
+                let path_str = path.to_string_lossy();
+                result.push((path_str.to_string(), from_str(&string)));
 
                 println!("Reading file {:?} with size: {}", path, size);
             }
@@ -88,17 +89,30 @@ mod tests {
     use crate::tokenizer::Tokenizer;
 
     use super::*;
+    use crate::analyzer::semantic_rules::Checker;
 
     #[test]
-    #[ignore]
     fn get_code() {
-        let ref mut codes: Vec<SourceCode> = vec![];
+        let ref mut codes: Vec<(String, SourceCode)> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);
         assert_eq!(codes.len(), 275);
 
-        for code in codes {
+        let mut index = 1;
+        for (path, code) in codes {
+            println!("{}", index);
             let ref mut s = Tokenizer::new(code.clone());
-            s.read_tokens().expect("Expected: All tokens to be correct");
+            let tks = s.read_tokens().expect(&format!("Tokenizer error at {}", path));
+
+            let mut parser = Parser::new(code.clone(), tks);
+            let ast = parser.parse_file().expect(&format!("Parsing error at {}", path));
+
+            let checker = Checker::new(code.clone(), &ast);
+
+            for errors in checker.get_errors() {
+                println!("{}", errors);
+            }
+
+            index += 1;
         }
     }
 }

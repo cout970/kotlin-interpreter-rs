@@ -36,6 +36,7 @@ pub enum AnalyserError {
     InvalidModifierUsage { modifier: Modifier, context: String },
     DuplicatedModifier { modifier: Modifier },
     ConflictingImport { name: String },
+    DestructuringInTopLevel,
 }
 
 #[derive(Debug, Clone)]
@@ -150,6 +151,9 @@ fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &An
         }
         AnalyserError::DuplicatedModifier { modifier } => {
             write!(f, "Duplicated modifier '{}'\n", modifier.name)?;
+        }
+        AnalyserError::DestructuringInTopLevel => {
+            write!(f, "Variable destructuring is only available in local properties\n")?;
         }
     }
 

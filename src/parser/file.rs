@@ -47,14 +47,23 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
     let preamble = read_preamble(s)?;
     let mut objects = vec![];
 
-    while s.read_token(0) == Token::Fun ||
-        s.read_token(0) == Token::Val ||
-        s.read_token(0) == Token::Var ||
-        s.read_token(0) == Token::Class ||
-        s.read_token(0) == Token::Interface ||
-        s.read_token(0) == Token::Object ||
-        s.read_token(0) == Token::TypeAlias {
-        objects.push(read_top_level_object(s)?);
+    loop {
+        let mut saved = s.save();
+        read_modifiers(s).unwrap();
+
+        if s.read_token(0) == Token::Fun ||
+            s.read_token(0) == Token::Val ||
+            s.read_token(0) == Token::Var ||
+            s.read_token(0) == Token::Class ||
+            s.read_token(0) == Token::Interface ||
+            s.read_token(0) == Token::Object ||
+            s.read_token(0) == Token::TypeAlias
+        {
+            s.restore(saved);
+            objects.push(read_top_level_object(s)?);
+        } else {
+            break;
+        }
     }
 
     Ok(KotlinFile { preamble, objects })
