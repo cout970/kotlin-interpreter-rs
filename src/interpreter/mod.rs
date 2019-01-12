@@ -6,6 +6,7 @@ use crate::interpreter::value::Value;
 use crate::source_code::SourceCode;
 
 pub mod value;
+mod vm;
 
 pub struct Env {
     code: SourceCode,

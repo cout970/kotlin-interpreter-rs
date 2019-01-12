@@ -55,22 +55,3 @@ pub struct ClassMember {
     pub descriptor: String,
 }
 
-//pub enum Opcode {
-//    Call(String),
-//    InstanceOf(String),
-//    // If expression
-//    If(String, u32),
-//    // Inconditional jump
-//    Jump,
-//    // Create a variable, initialize it or not
-//    Def(String, bool),
-//    // Read value from variable
-//    Read(String),
-//    // Write value to variable
-//    Write(String),
-//    Return,
-//    // TODO
-//    Try,
-//    Throw,
-//    Load(Value)
-//}
