@@ -251,6 +251,7 @@ fn read_variable_decl(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntr
 fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
     let name = if s.optional_expect(Token::Underscore) {
         String::from("_")
+
     } else {
         s.expect_id()?
     };
@@ -453,8 +454,22 @@ fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     Ok(((start, s.end()), Expr::Prefix { prefix: ops, expr: Arc::new(expr) }))
 }
 
+fn is_at_expr_postfix_firsts(s: &mut TokenCursor) -> bool {
+    let this = s.read_token(0);
+    let next = if this != Token::EOF { s.read_token(1) } else { Token::EOF };
+
+    // Token::LeftAngleBracket cannot be included because is used for 'less than' comparison
+    match this {
+        Token::DoublePlus | Token::DoubleMinus | Token::DoubleExclamationMark |
+        Token::LeftParen | Token::LeftBrace |
+        Token::LeftBracket | Token::Dot | Token::QuestionMark => true,
+        Token::Id(_) if next == Token::At => true,
+        _ => false,
+    }
+}
+
 fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtError> {
-    // Primeros: ++, --, !!, (, <, {, [,
+    // Primeros: ++, --, !!, (, <, {, [, Id
 //  postfixUnaryOperation
 //    : "++" : "--" : "!!"
 //    : callSuffix
@@ -462,7 +477,9 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
 //    : memberAccessOperation postfixUnaryExpression
 //  ;
 
-    let suf = match s.read_token(0) {
+    let this = s.read_token(0);
+    let next = if this != Token::EOF { s.read_token(1) } else { Token::EOF };
+    let suf = match this {
         Token::DoublePlus => {
             s.next();
             ExprPostfix::Increment
@@ -478,22 +495,28 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
         Token::LeftParen | Token::LeftAngleBracket | Token::LeftBrace => {
             ExprPostfix::FunCall(read_call_suffix(s)?)
         }
+        Token::Id(_) if next == Token::At => {
+            // test.forEach label@{ i -> println(i) }
+            ExprPostfix::FunCall(read_call_suffix(s)?)
+        }
         Token::LeftBracket => {
             s.expect(Token::LeftBracket)?;
             let expr = read_expresion(s)?;
             s.expect(Token::RightBracket)?;
             ExprPostfix::ArrayAccess(expr)
         }
-        Token::Dot | Token::SafeDot => {
-            let op = match s.read_token(0) {
-                Token::Dot => ".",
-                Token::SafeDot => "?.",
-                _ => panic!("Unexpected token: '{}'", s.read_token(0))
-            };
+        Token::Dot => {
             s.next();
             let next = read_expr_postfix_unary(s)?;
 
-            ExprPostfix::MemberAccess { operator: String::from(op), next }
+            ExprPostfix::MemberAccess { operator: String::from("."), next }
+        }
+        Token::QuestionMark => {
+            s.next();
+            s.expect(Token::Dot)?;
+            let next = read_expr_postfix_unary(s)?;
+
+            ExprPostfix::MemberAccess { operator: String::from("?."), next }
         }
         _ => {
             return s.make_error_expected_of(vec![
@@ -502,7 +525,7 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
                 Token::DoubleExclamationMark,
                 Token::LeftParen, Token::LeftAngleBracket, Token::LeftBrace,
                 Token::LeftBracket,
-                Token::Dot, Token::QuestionMark, Token::SafeDot
+                Token::Dot, Token::QuestionMark, Token::QuestionMark
             ]);
         }
     };
@@ -516,13 +539,46 @@ fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         Some(e) => e,
         None => read_expr_atomic(s)?
     };
-    let ops = s.many0(&read_expr_postfix_operation)?;
+    let mut ops = vec![];
+    loop {
+        // Ambiguity with '<'
+        if s.read_token(0) == Token::LeftAngleBracket {
+            if let Some(it) = s.optional(&read_expr_postfix_operation) {
+                ops.push(it);
+            } else {
+                break;
+            }
+        } else {
+            if !is_at_expr_postfix_firsts(s) { break; }
+
+            ops.push(read_expr_postfix_operation(s)?);
+        }
+    }
+    while is_at_expr_postfix_firsts(s) {
+        ops.push(read_expr_postfix_operation(s)?);
+    }
     Ok(((start, s.end()), Expr::Postfix { expr: Arc::new(expr), postfix: ops }))
 }
 
 fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
-    let ty = read_user_type(s)?;
+
+    let ty = match s.read_token(0) {
+        Token::This => {
+            s.next();
+            // Ignore 'this' label
+            if s.optional_expect(Token::At) {
+                s.expect_id();
+            }
+            vec![SimpleUserType { name: String::from("this"), type_params: vec![] }]
+        }
+        Token::Super => {
+            s.next();
+            vec![SimpleUserType { name: String::from("super"), type_params: vec![] }]
+        }
+        _ => read_user_type(s)?,
+    };
+
     s.expect(Token::DoubleColon)?;
     let name = if s.optional_expect(Token::Class) {
         String::from("class")
@@ -570,6 +626,10 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         }
         Token::This => {
             s.next();
+            // Ignore 'this' label
+            if s.optional_expect(Token::At) {
+                s.expect_id();
+            }
             Ok(((start, s.end()), Expr::This))
         }
         Token::Super => {
@@ -682,7 +742,8 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 
     let mut if_false = None;
 
-    if s.optional_expect(Token::Else) {
+    if s.read_token(0) == Token::Else && s.read_token(1) != Token::LeftArrow {
+        s.next();
         if_false = Some(read_control_structure_body(s)?);
     }
 
@@ -761,7 +822,12 @@ fn read_expr_when(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     };
 
     s.expect(Token::LeftBrace)?;
-    let entries = s.many1(&read_expr_when_entry)?;
+    let mut entries = vec![];
+
+    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+        entries.push(read_expr_when_entry(s)?);
+    }
+
     s.expect(Token::RightBrace)?;
 
     Ok(((start, s.end()), Expr::When {
@@ -827,6 +893,13 @@ fn read_object_literal(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 }
 
 fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
+    if s.read_token(0) == Token::LeftBrace && s.at_newline() {
+        let start = s.start();
+        if let Some(expr) = s.optional(&read_expresion){
+            return Ok(((start, s.end()), vec![Statement::Expr(expr)]));
+        }
+    }
+
     if s.read_token(0) == Token::LeftBrace {
         Ok(read_block(s)?)
     } else {
@@ -898,6 +971,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     let type_parameters = read_type_parameters(s)?;
 
     let save = s.save();
+
     let receiver = match s.optional(&read_receiver_type) {
         Some(ty) => {
             if s.optional_expect(Token::Dot) {
@@ -1069,7 +1143,7 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
                 Arc::new(TypeReference::Function(FunctionType { receiver: None, parameters: vec![], return_type }))
             } else {
                 // (Int
-                let first = read_type(s)?;
+                let first = read_func_type_arg(s)?;
                 if s.optional_expect(Token::RightParen) {
                     // (Int)
                     if s.optional_expect(Token::LeftArrow) {
@@ -1084,7 +1158,7 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
                 } else {
                     // (Int, // Expecting to read more params in this function type
                     s.expect(Token::Comma)?;
-                    let rest = s.separated_by(Token::Comma, &read_type)?;
+                    let rest = s.separated_by(Token::Comma, &read_func_type_arg)?;
                     s.expect(Token::RightParen)?;
                     s.expect(Token::LeftArrow)?;
                     let return_type = read_type_reference(s, receiver)?;
@@ -1154,6 +1228,22 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
     } else {
         Ok(ty)
     }
+}
+
+fn read_func_type_arg(s: &mut TokenCursor) -> Result<Type, KtError> {
+    fn named_arg(s: &mut TokenCursor) -> Result<String, KtError> {
+        let n = s.expect_id()?;
+        s.expect(Token::Colon)?;
+        Ok(n)
+    }
+
+    // (name: Int
+    s.optional(&named_arg);
+
+    // (Int
+    let first = read_type(s)?;
+
+    Ok(first)
 }
 
 fn read_parameter_list(s: &mut TokenCursor) -> Result<Vec<Parameter>, KtError> {
@@ -1329,7 +1419,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
     let primary_constructor = if s.read_token(0) == Token::LeftParen {
         Some(read_primary_constructor(s)?)
     } else {
-        None
+        s.optional(&read_primary_constructor)
     };
 
     let mut annotations = vec![];
@@ -1396,7 +1486,7 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
         DelegationCall::None
     };
 
-    let body = if s.read_token(0) == Token::LeftParen {
+    let body = if s.read_token(0) == Token::LeftBrace || s.read_token(0) == Token::Equals {
         Some(read_block(s)?)
     } else {
         None
@@ -1436,11 +1526,11 @@ fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier,
         let expr = read_expresion(s)?;
         Ok(DelegationSpecifier::DelegatedBy(ty, expr))
     } else {
-        match s.optional(&read_call_suffix) {
-            Some(suffix) => {
-                Ok(DelegationSpecifier::FunctionCall(ty, suffix))
-            }
-            None => {
+        let save = s.save();
+        match read_call_suffix_without_lambda(s) {
+            Ok(suffix) => Ok(DelegationSpecifier::FunctionCall(ty, suffix)),
+            Err(e) => {
+                s.restore(save);
                 Ok(DelegationSpecifier::Type(ty))
             }
         }
@@ -1479,6 +1569,13 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
 
     let annotated_lambda = match s.read_token(0) {
         Token::LeftBrace => Some(read_annotated_lambda(s)?),
+        Token::Id(_) => {
+            if s.read_token(1) == Token::At {
+                Some(read_annotated_lambda(s)?)
+            } else {
+                None
+            }
+        }
         _ => None
     };
 
@@ -1513,6 +1610,11 @@ fn read_annotated_lambda(s: &mut TokenCursor) -> Result<AnnotatedLambda, KtError
         annotations.push(read_unescaped_annotation(s)?);
     }
 
+    if iff!(let Token::Id(_) = s.read_token(0)) && s.read_token(1) == Token::At {
+        s.expect_id()?;
+        s.expect(Token::At)?;
+    }
+
     let body = read_function_literal(s)?;
 
     Ok(AnnotatedLambda {
@@ -1523,7 +1625,6 @@ fn read_annotated_lambda(s: &mut TokenCursor) -> Result<AnnotatedLambda, KtError
 
 fn read_function_literal(s: &mut TokenCursor) -> Result<FunctionLiteral, KtError> {
     fn read_args(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
-        // TODO add variable destructuring
         let parameters = s.separated_by(Token::Comma, &read_variable_decl)?;
         s.expect(Token::LeftArrow)?;
         Ok(parameters.into_iter().flatten().collect::<Vec<_>>())
@@ -1899,7 +2000,8 @@ fn read_modifier2(s: &mut TokenCursor, set: ModifierSet) -> Result<Modifier, KtE
         }
         ModifierSet::Statement => {
             vec!["override", "abstract", "final", "enum", "open", "annotation", "sealed", "data", "lateinit",
-                 "tailrec", "operator", "infix", "inline", "suspend"]
+                 "private", "protected", "public", "internal",
+                 "tailrec", "operator", "infix", "inline", "suspend", "inner"]
         }
         ModifierSet::Visibility => {
             vec!["private", "protected", "public", "internal"]
@@ -1909,7 +2011,7 @@ fn read_modifier2(s: &mut TokenCursor, set: ModifierSet) -> Result<Modifier, KtE
                 "abstract", "final", "enum", "override", "open", "annotation", "sealed", "data", "lateinit",
                 "private", "protected", "public", "internal",
                 "tailrec", "operator", "infix", "inline", "external", "suspend",
-                "const", "expect", "actual"
+                "const", "expect", "actual", "inner"
             ]
         }
         ModifierSet::EnumEntry => {
@@ -1948,40 +2050,6 @@ fn read_modifier2(s: &mut TokenCursor, set: ModifierSet) -> Result<Modifier, KtE
         s.make_error(span, ParserError::ExpectedTokenId {
             found: tk
         })
-    }
-}
-
-fn read_modifier(s: &mut TokenCursor) -> Result<Modifier, KtError> {
-    let start = s.save();
-    match s.read_token(0) {
-        Token::Id(name) => {
-            s.next();
-            // TODO add enum modifier
-            match name.as_str() {
-                /*"abstract" |*/ /*"final" |*/ "enum" | /*"open" |*/ "annotation" | "sealed" | "data" | // classModifier
-                "override" | "open" | "final" | "abstract" | "lateinit" | // memberModifier
-                "private" | "protected" | "public" | "internal" | // accessModifier
-                "in" | "out" | // varianceAnnotation
-                "noinline" | "crossinline" | "vararg" | // parameterModifier
-                "reified" | // typeParameterModifier
-                "tailrec" | "operator" | "infix" | "inline" | "external" | "suspend" | // functionModifier
-                "const" | // propertyModifier
-                "suspend" | // coroutine
-                "expect" | "actual" // multiPlatformModifier
-                => Ok(Modifier { name }),
-                _ => s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                    found: Token::Id(name.to_owned())
-                })
-            }
-        }
-        Token::In => Ok(Modifier { name: String::from("in") }),
-        _ => {
-            let tk = s.read_token(0);
-            s.next();
-            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                found: tk
-            })
-        }
     }
 }
 
@@ -2104,6 +2172,48 @@ mod tests {
     }
 
     #[test]
+    fn test_exceptions() {
+        // if with lambdas
+        println!("{:?}", get_ast("\
+        selected = if (isMultiSelect(sel))
+                { _, obj -> programState.modelSelection.eval { obj.obj != null && it.isSelected(obj.obj) } }
+            else
+                { i, _ -> i == sel }
+        ", read_expresion));
+
+        // 'this' with label in a callable reference
+        println!("{:?}", get_ast("\
+        fun RBuilder.timeline() = scrollablePanel(\"Timeline\") {
+            onScroll(this@BottomPanel::handleScroll)
+        }\
+        ", read_top_level_object));
+
+        // 'this' in a callable reference
+        println!("{:?}", get_ast("\
+        UI.setTimeout(NOTIFICATION_DELAY, this::updateNotifications)\
+        ", read_expresion));
+
+        // Function literal with label
+        println!("{:?}", get_ast("\
+        classes.forEach classLoop@{ thisClass -> thisClass }\
+        ", read_expresion));
+
+        // Ambiguity with else
+        println!("{:?}", get_ast("\
+        when {
+                moveLayoutSplitterLeft.check(e) -> splitter -= 0.03125f
+                moveLayoutSplitterRight.check(e) -> splitter += 0.03125f
+                newCanvas.check(e) -> container.newCanvas()
+                deleteCanvas.check(e) -> if (container.canvas.isNotEmpty()) {
+                    container.removeCanvas(container.canvas.lastIndex)
+                    gui.root.reRender()
+                }
+                else -> return false
+            }\
+        ", read_expresion));
+    }
+
+    #[test]
     fn test_types() {
         println!("{:?}", get_ast("(Int, Int) -> Int", read_type));
         println!("{:?}", get_ast("((Int, Int) -> Int)", read_type));
@@ -2190,8 +2300,8 @@ mod tests {
 
     #[test]
     fn test_read_typealias() {
-        println!("{:?}", get_ast("public typealias MyList = List", read_statement));
-        println!("{:?}", get_ast("typealias Set<T> = Hashmap<T, Any>", read_statement));
+        println!("{:?}", get_ast("public typealias MyList = List", read_top_level_object));
+        println!("{:?}", get_ast("typealias Set<T> = Hashmap<T, Any>", read_top_level_object));
     }
 
     #[test]
@@ -2210,9 +2320,9 @@ mod tests {
         println!("{:?}", get_ast("class MyList<T> : ArrayList<T>()", read_top_level_object));
         println!("{:?}", get_ast("class MyList<T> : ArrayList<T>(1, 2, 3)", read_top_level_object));
         println!("{:?}", get_ast("class MyList<T>(rest: IntArray) : ArrayList<T>(arg1 = 1, rest = *list)", read_top_level_object));
-        println!("{:?}", get_ast("class MyList<T> : ArrayList<T> { 1 + 2 }", read_top_level_object));
+        println!("{:?}", get_ast("class MyList<T> : ArrayList<T>({ 1 + 2 })", read_top_level_object));
         println!("{:?}", get_ast("object MyList : ArrayList()", read_top_level_object));
-        println!("{:?}", get_ast("class MyList<T> : ArrayList<T> { 1 + 2 } { val age = 5 }", read_top_level_object));
+        println!("{:?}", get_ast("class MyList<T> : ArrayList<T> ({ 1 + 2 }) { val age = 5 }", read_top_level_object));
         println!("{:?}", get_ast("class Animal { val age = 5 }", read_top_level_object));
         println!("{:?}", get_ast("enum class Color { RED, GREEN, BLUE; init{} }", read_top_level_object));
         println!("{:?}", get_ast("enum class Color { RED, GREEN, BLUE,; init{} }", read_top_level_object));

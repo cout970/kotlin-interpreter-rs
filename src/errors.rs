@@ -223,7 +223,6 @@ impl Display for Token {
             Token::DoubleDot => { write!(f, "..")?; }
             Token::Comma => { write!(f, ",")?; }
             Token::QuestionMark => { write!(f, "?")?; }
-            Token::SafeDot => { write!(f, "?.")?; }
             Token::ExclamationMark => { write!(f, "!")?; }
             Token::DoubleExclamationMark => { write!(f, "!!")?; }
             Token::NotEquals => { write!(f, "!=")?; }

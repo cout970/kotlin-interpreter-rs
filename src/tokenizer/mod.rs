@@ -243,10 +243,6 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
                 stream.next();
                 Token::Elvis
             }
-            b'.' => {
-                stream.next();
-                Token::SafeDot
-            }
             _ => Token::QuestionMark
         },
         b'!' => match c1 {
@@ -295,6 +291,10 @@ fn read_token_aux(stream: &mut CodeCursor) -> Result<Token, KtError> {
             _ => Token::Plus
         },
         b'-' => match c1 {
+            b'=' => {
+                stream.next();
+                Token::MinusEquals
+            }
             b'-' => {
                 stream.next();
                 Token::DoubleMinus
@@ -767,6 +767,7 @@ mod tests {
     use crate::source_code::from_str;
     use crate::tokenizer::read_token;
     use crate::tokenizer::token::Token;
+    use pretty_assertions::assert_eq;
 
     use super::*;
 
@@ -790,8 +791,37 @@ mod tests {
             Token::DoubleDot, Token::Plus, Token::DoublePlus, Token::Minus, Token::DoubleMinus,
             Token::Asterisk, Token::Slash, Token::Percent, Token::Equals, Token::DoubleEquals,
             Token::TripleEquals, Token::NotEquals, Token::NotDoubleEquals, Token::PlusEquals,
-            Token::Minus, Token::Equals, Token::TimesEquals, Token::DivEquals, Token::ModEquals,
+            Token::MinusEquals, Token::TimesEquals, Token::DivEquals, Token::ModEquals,
             Token::Ampersand, Token::DoubleAmpersand, Token::Pipe, Token::DoublePipe,
+            Token::EOF,
+        ];
+
+        let found = s.read_tokens()
+            .unwrap()
+            .into_iter()
+            .map(|(_, tk)| tk)
+            .collect::<Vec<_>>();
+
+        assert_eq!(expected, found);
+    }
+
+    #[test]
+    fn check_tokens_1() {
+        let ref mut s = Tokenizer::new(from_str("\
+moveLayoutSplitterLeft.check(e) -> splitter -= 0.03125f\
+"));
+
+        let expected = vec![
+            Token::Id(String::from("moveLayoutSplitterLeft")),
+            Token::Dot,
+            Token::Id(String::from("check")),
+            Token::LeftParen,
+            Token::Id(String::from("e")),
+            Token::RightParen,
+            Token::LeftArrow,
+            Token::Id(String::from("splitter")),
+            Token::MinusEquals,
+            Token::Number(Number::Float(0.03125)),
             Token::EOF,
         ];
 

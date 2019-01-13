@@ -31,7 +31,6 @@ pub enum Token {
     DoubleDot,
     Comma,
     QuestionMark,
-    SafeDot,
     ExclamationMark,
     DoubleExclamationMark,
     NotEquals,
