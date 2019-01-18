@@ -6,8 +6,6 @@ use crate::parser::ast::*;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
-mod type_reference_getter;
-
 pub struct Checker {
     code: SourceCode,
     errors: Vec<(Span, AnalyserError)>,

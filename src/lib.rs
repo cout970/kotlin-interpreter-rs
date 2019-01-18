@@ -78,6 +78,12 @@ fn create_vec<T>(first: T, rest: Vec<T>) -> Vec<T> {
     new
 }
 
+fn vec_with<T: Clone>(vec: &Vec<T>, new: T) -> Vec<T> {
+    let mut new_vec = vec.clone();
+    new_vec.push(new);
+    new_vec
+}
+
 #[inline]
 fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
     src.into_iter().map(func).collect::<Vec<B>>()
@@ -90,6 +96,7 @@ mod tests {
 
     use super::*;
     use crate::analyzer::semantic_rules::Checker;
+    use crate::analyzer::typechecker::TypeChecker;
 
     #[test]
     #[ignore]

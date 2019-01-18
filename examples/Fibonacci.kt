@@ -1,6 +1,8 @@
+@file:Suppress("unused")
+
 external fun println(x: Any)
 
-fun main() {
+fun main(args: Array<String>) {
     println(fibonacci(12))
 }
 
@@ -20,4 +22,11 @@ class MyBox<T>(private val value: T?) {
         null -> this
         else -> MyBox(func(value))
     }
+
+    sealed class Result<T> {
+        object Err : Result<Nothing>()
+        class Ok<T>(val value: T) : Result<T>()
+    }
 }
+
+val <T> List<T>.first: T get() = this[0]

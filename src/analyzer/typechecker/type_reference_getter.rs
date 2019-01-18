@@ -1,38 +1,54 @@
-use crate::parser::ast::AnonymousInitializer;
-use crate::parser::ast::Block;
-use crate::parser::ast::CallSiteTypeParams;
-use crate::parser::ast::CallSuffix;
-use crate::parser::ast::Class;
-use crate::parser::ast::ClassBody;
-use crate::parser::ast::Declaration;
-use crate::parser::ast::DelegationCall;
-use crate::parser::ast::DelegationSpecifier;
-use crate::parser::ast::Expr;
-use crate::parser::ast::ExprPostfix;
-use crate::parser::ast::Function;
-use crate::parser::ast::FunctionBody;
-use crate::parser::ast::KotlinFile;
-use crate::parser::ast::Member;
-use crate::parser::ast::Object;
-use crate::parser::ast::Path;
-use crate::parser::ast::Property;
-use crate::parser::ast::Statement;
-use crate::parser::ast::StringComponent;
-use crate::parser::ast::TopLevelObject;
-use crate::parser::ast::Type;
-use crate::parser::ast::TypeAlias;
-use crate::parser::ast::TypeReference;
-use crate::parser::ast::UserType;
-use crate::parser::ast::WhenCondition;
+use std::collections::HashSet;
 
-type RefVec = Vec<String>;
+use crate::parser::ast::*;
+
+struct RefVec {
+    pub types: HashSet<String>,
+    pub type_params: Vec<HashSet<String>>,
+}
 
 pub fn get_all_references_to_types(file: &KotlinFile) -> Vec<String> {
-    let mut refs = vec![];
+    let mut refs = RefVec {
+        types: HashSet::new(),
+        type_params: vec![],
+    };
+
     for obj in &file.objects {
         get_top_level_object_references(&mut refs, obj);
     }
-    refs
+
+    // TODO apply import alias
+    debug_assert_eq!(refs.type_params.len(), 0);
+    refs.types.into_iter().collect::<Vec<_>>()
+}
+
+fn get_simple_user_type_references(refs: &mut RefVec, user_type: &UserType) {
+    let mut name = String::new();
+
+    name.push_str(&user_type[0].name);
+    for i in 1..user_type.len() {
+        name.push('.');
+        name.push_str(&user_type[i].name);
+    }
+
+    for ty in user_type {
+        for param in &ty.type_params {
+            match param {
+                CallSiteTypeParams::Projection => {}
+                CallSiteTypeParams::Type(ty) => {
+                    get_type_references(refs, ty);
+                }
+            }
+        }
+    }
+
+    // If the name is the same as a type argument then we ignore it
+    for set in &refs.type_params {
+        if set.contains(&name) {
+            return;
+        }
+    }
+    refs.types.insert(name);
 }
 
 fn get_top_level_object_references(refs: &mut RefVec, obj: &TopLevelObject) {
@@ -56,6 +72,12 @@ fn get_top_level_object_references(refs: &mut RefVec, obj: &TopLevelObject) {
 }
 
 fn get_property_references(refs: &mut RefVec, prop: &Property) {
+    let type_parameters: HashSet<String> = prop.type_parameters.iter()
+        .map(|it| it.name.to_owned())
+        .collect();
+
+    refs.type_params.push(type_parameters);
+
     // Receiver
     if let Some(it) = &prop.receiver {
         get_type_references(refs, it);
@@ -115,9 +137,17 @@ fn get_property_references(refs: &mut RefVec, prop: &Property) {
             }
         }
     }
+
+    refs.type_params.pop().unwrap();
 }
 
 fn get_function_references(refs: &mut RefVec, fun: &Function) {
+    let type_parameters: HashSet<String> = fun.type_parameters.iter()
+        .map(|it| it.name.to_owned())
+        .collect();
+
+    refs.type_params.push(type_parameters);
+
     // Receiver
     if let Some(it) = &fun.receiver {
         get_type_references(refs, it);
@@ -158,9 +188,18 @@ fn get_function_references(refs: &mut RefVec, fun: &Function) {
             }
         }
     }
+
+    refs.type_params.pop().unwrap();
 }
 
 fn get_class_references(refs: &mut RefVec, class: &Class) {
+    let type_parameters: HashSet<String> = class.type_parameters.iter()
+        .map(|it| it.name.to_owned())
+        .collect();
+
+    refs.type_params.push(type_parameters);
+    refs.types.insert(class.name.to_owned());
+
     // Type parameters
     for param in &class.type_parameters {
         if let Some(it) = &param.user_type {
@@ -194,6 +233,8 @@ fn get_class_references(refs: &mut RefVec, class: &Class) {
             get_member_references(refs, member);
         }
     }
+
+    refs.type_params.pop().unwrap();
 }
 
 fn get_class_body_references(refs: &mut RefVec, body: &ClassBody) {
@@ -212,6 +253,8 @@ fn get_class_body_references(refs: &mut RefVec, body: &ClassBody) {
 }
 
 fn get_object_references(refs: &mut RefVec, obj: &Object) {
+    refs.types.insert(obj.name.to_owned());
+
     // Primary constructor
     if let Some(constructor) = &obj.primary_constructor {
         for x in &constructor.params {
@@ -274,12 +317,20 @@ fn get_call_suffix_references(refs: &mut RefVec, suffix: &CallSuffix) {
 }
 
 fn get_typealias_references(refs: &mut RefVec, alias: &TypeAlias) {
+    let type_parameters: HashSet<String> = alias.type_parameters.iter()
+        .map(|it| it.name.to_owned())
+        .collect();
+
+    refs.type_params.push(type_parameters);
+    refs.types.insert(alias.name.to_owned());
+
     get_type_references(refs, &alias.ty);
     for param in &alias.type_parameters {
         if let Some(ty) = &param.user_type {
             get_type_references(refs, ty);
         }
     }
+    refs.type_params.pop().unwrap();
 }
 
 fn get_member_references(refs: &mut RefVec, member: &Member) {
@@ -354,28 +405,6 @@ fn get_type_ref_references(refs: &mut RefVec, ty: &TypeReference) {
     }
 }
 
-fn get_simple_user_type_references(refs: &mut RefVec, user_type: &UserType) {
-    let mut name = String::new();
-
-    name.push_str(&user_type[0].name);
-    for i in 1..user_type.len() {
-        name.push('.');
-        name.push_str(&user_type[i].name);
-    }
-
-    for ty in user_type {
-        for param in &ty.type_params {
-            match param {
-                CallSiteTypeParams::Projection => {}
-                CallSiteTypeParams::Type(ty) => {
-                    get_type_references(refs, ty);
-                }
-            }
-        }
-    }
-
-    refs.push(name);
-}
 
 fn get_block_references(refs: &mut RefVec, block: &Block) {
     let (_, statements) = block;
