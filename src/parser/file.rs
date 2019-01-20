@@ -49,7 +49,7 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
 
     loop {
         let saved = s.save();
-        read_modifiers(s, ModifierSet::TopLevelObject).unwrap();
+        read_modifiers(s, ModifierCtx::TopLevelObject).unwrap();
 
         if s.read_token(0) == Token::Fun ||
             s.read_token(0) == Token::Val ||
@@ -70,7 +70,7 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
 }
 
 fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::TopLevelObject)?;
+    let modifiers = read_modifiers(s, ModifierCtx::TopLevelObject)?;
 
     let obj = match s.read_token(0) {
         Token::Fun => {
@@ -164,14 +164,14 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
 }
 
 fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Option<PropertySetter>), KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
+    let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
     let mut getter: Option<PropertyGetter> = None;
     let mut setter: Option<PropertySetter> = None;
 
     match s.read_token(0) {
         Token::Id(ref t) if t == "get" => {
             getter = Some(read_property_getter(s, modifiers)?);
-            let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
+            let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
 
             match s.read_token(0) {
                 Token::Id(ref t) if t == "set" => {
@@ -182,7 +182,7 @@ fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Op
         }
         Token::Id(ref t) if t == "set" => {
             setter = Some(read_property_setter(s, modifiers)?);
-            let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
+            let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
 
             match s.read_token(0) {
                 Token::Id(ref t) if t == "get" => {
@@ -223,7 +223,7 @@ fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
     let start = s.start();
     s.expect_keyword("set")?;
     if s.optional_expect(Token::LeftParen) {
-        let param_modifiers = read_modifiers(s, ModifierSet::Visibility)?;
+        let param_modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
         let param_name = Some(s.expect_id()?);
         let mut param_ty = None;
 
@@ -251,7 +251,6 @@ fn read_variable_decl(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntr
 fn read_variable_declaration(s: &mut TokenCursor) -> Result<VariableDeclarationEntry, KtError> {
     let name = if s.optional_expect(Token::Underscore) {
         String::from("_")
-
     } else {
         s.expect_id()?
     };
@@ -895,7 +894,7 @@ fn read_object_literal(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
     if s.read_token(0) == Token::LeftBrace && s.at_newline() {
         let start = s.start();
-        if let Some(expr) = s.optional(&read_expresion){
+        if let Some(expr) = s.optional(&read_expresion) {
             return Ok(((start, s.end()), vec![Statement::Expr(expr)]));
         }
     }
@@ -1033,7 +1032,7 @@ fn read_type_parameters_force(s: &mut TokenCursor) -> Result<Vec<TypeParameter>,
 }
 
 fn read_type_parameter(s: &mut TokenCursor) -> Result<TypeParameter, KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::TypeParameter)?;
+    let modifiers = read_modifiers(s, ModifierCtx::TypeParameter)?;
     let name = s.expect_id()?;
     let mut user_type = None;
 
@@ -1333,7 +1332,7 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
     let save = s.save();
-    let modifiers = read_modifiers(s, ModifierSet::Statement)?;
+    let modifiers = read_modifiers(s, ModifierCtx::Statement)?;
 
     if s.read_token(0) == Token::Object {
         // Special case for object, it could be an object declaration or an object literal,
@@ -1345,7 +1344,7 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
             Ok(e) => Ok(Statement::Expr(e)),
             Err(_) => {
                 s.restore(save);
-                let modifiers = read_modifiers(s, ModifierSet::Statement)?;
+                let modifiers = read_modifiers(s, ModifierCtx::Statement)?;
                 Ok(Statement::Decl(read_declaration(s, modifiers)?))
             }
         }
@@ -1405,9 +1404,9 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
     if !interface {
         s.expect(Token::Class)?;
 
-        if modifiers.iter().any(|m| m.name == "enum") {
+        if modifiers.iter().any(|it| *it == Modifier::Enum) {
             class_type = ClassType::Enum;
-        } else if modifiers.iter().any(|m| m.name == "annotation") {
+        } else if modifiers.iter().any(|it| *it == Modifier::Annotation) {
             class_type = ClassType::Annotation;
         } else {
             class_type = ClassType::Class;
@@ -1459,7 +1458,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, KtError> {
     //  (modifiers "constructor")? ("(" functionParameter{","} ")")
     fn primary_constructor_start(s: &mut TokenCursor) -> Result<Vec<Modifier>, KtError> {
-        let m = read_modifiers(s, ModifierSet::Visibility)?;
+        let m = read_modifiers(s, ModifierCtx::GetterSetter)?;
         s.expect_keyword("constructor")?;
         Ok(m)
     }
@@ -1687,7 +1686,7 @@ fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 }
 
 fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::ClassMember)?;
+    let modifiers = read_modifiers(s, ModifierCtx::ClassMember)?;
 
     let obj = match s.read_token(0) {
         Token::Fun => {
@@ -1746,7 +1745,7 @@ fn read_enum_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 }
 
 fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::EnumEntry)?;
+    let modifiers = read_modifiers(s, ModifierCtx::EnumEntry)?;
     let name = s.expect_id()?;
 
     let mut value_arguments = vec![];
@@ -1889,7 +1888,7 @@ fn read_value_parameters(s: &mut TokenCursor) -> Result<Vec<FunctionParameter>, 
 }
 
 fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtError> {
-    let modifiers = read_modifiers(s, ModifierSet::FunctionParameter)?;
+    let modifiers = read_modifiers(s, ModifierCtx::FunctionParameter)?;
     let mut mutability = ParameterMutability::Default;
 
     if s.optional_expect(Token::Val) {
@@ -1944,7 +1943,7 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
 
 fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
     let start = s.start();
-    let modifiers = read_modifiers(s, ModifierSet::Visibility)?;
+    let modifiers = read_modifiers(s, ModifierCtx::Package)?;
     s.expect(Token::Package)?;
     let path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     s.semi();
@@ -1952,25 +1951,14 @@ fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
     Ok(PackageHeader { span: (start, s.end()), modifiers, path })
 }
 
-#[derive(Copy, Clone)]
-enum ModifierSet {
-    TopLevelObject,
-    TypeParameter,
-    Statement,
-    Visibility,
-    ClassMember,
-    EnumEntry,
-    FunctionParameter,
-}
-
-fn read_modifiers(s: &mut TokenCursor, set: ModifierSet) -> Result<Vec<Modifier>, KtError> {
+fn read_modifiers(s: &mut TokenCursor, set: ModifierCtx) -> Result<Vec<Modifier>, KtError> {
     let mut modifiers = vec![];
     loop {
         if s.read_token(0) == Token::At {
             read_annotations(s)?;
         }
         let save = s.save();
-        match read_modifier2(s, set) {
+        match read_modifier(s, set) {
             Ok(it) => {
                 modifiers.push(it);
             }
@@ -1984,73 +1972,127 @@ fn read_modifiers(s: &mut TokenCursor, set: ModifierSet) -> Result<Vec<Modifier>
     Ok(modifiers)
 }
 
-fn read_modifier2(s: &mut TokenCursor, set: ModifierSet) -> Result<Modifier, KtError> {
+fn read_modifier(s: &mut TokenCursor, set: ModifierCtx) -> Result<Modifier, KtError> {
     let start = s.save();
-    let valid_names: Vec<&'static str> = match set {
-        ModifierSet::TopLevelObject => {
-            vec![
-                "abstract", "final", "enum", "open", "annotation", "sealed", "data", "lateinit",
-                "private", "protected", "public", "internal",
-                "tailrec", "operator", "infix", "inline", "external", "suspend",
-                "const", "expect", "actual"
-            ]
-        }
-        ModifierSet::TypeParameter => {
-            vec!["in", "out", "reified"]
-        }
-        ModifierSet::Statement => {
-            vec!["override", "abstract", "final", "enum", "open", "annotation", "sealed", "data", "lateinit",
-                 "private", "protected", "public", "internal",
-                 "tailrec", "operator", "infix", "inline", "suspend", "inner"]
-        }
-        ModifierSet::Visibility => {
-            vec!["private", "protected", "public", "internal"]
-        }
-        ModifierSet::ClassMember => {
-            vec![
-                "abstract", "final", "enum", "override", "open", "annotation", "sealed", "data", "lateinit",
-                "private", "protected", "public", "internal",
-                "tailrec", "operator", "infix", "inline", "external", "suspend",
-                "const", "expect", "actual", "inner"
-            ]
-        }
-        ModifierSet::EnumEntry => {
-            vec!["inline"]
-        }
-        ModifierSet::FunctionParameter => {
-            vec![
-                "noinline", "crossinline", "vararg", "override",
-                "private", "protected", "public", "internal"
-            ]
-        }
+    let tk = s.read_token(0);
+
+    let modifier = match tk {
+        Token::Id(name) => get_modifier_by_name(&name),
+        Token::In => Some(Modifier::In),
+        _ => None,
     };
 
-    if let Token::Id(name) = s.read_token(0) {
-        s.next();
-        if valid_names.contains(&name.as_str()) {
-            Ok(Modifier { name })
-        } else {
-            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                found: Token::Id(name)
-            })
-        }
-    } else if let Token::In = s.read_token(0) {
-        s.next();
-        if valid_names.contains(&"in") {
-            Ok(Modifier { name: String::from("in") })
-        } else {
-            s.make_error((start, s.save()), ParserError::ExpectedTokenId {
-                found: Token::In
-            })
-        }
+    let modifier = if let Some(it) = modifier {
+        it
     } else {
         let tk = s.read_token(0);
         s.next();
         let span = (start, s.end());
-        s.make_error(span, ParserError::ExpectedTokenId {
+        return s.make_error(span, ParserError::ExpectedTokenId {
             found: tk
-        })
+        });
+    };
+
+    let is_valid = match set {
+        ModifierCtx::TopLevelObject => {
+            match modifier {
+                Modifier::Abstract | Modifier::Final | Modifier::Enum | Modifier::Open |
+                Modifier::Annotation | Modifier::Sealed | Modifier::Data | Modifier::Lateinit |
+                Modifier::Private | Modifier::Protected | Modifier::Public | Modifier::Internal |
+                Modifier::Tailrec | Modifier::Operator | Modifier::Infix | Modifier::Inline |
+                Modifier::External | Modifier::Suspend | Modifier::Const | Modifier::Expect |
+                Modifier::Actual => true,
+                _ => false
+            }
+        }
+        ModifierCtx::TypeParameter => {
+            modifier == Modifier::In || modifier == Modifier::Out || modifier == Modifier::Reified
+        }
+        ModifierCtx::Statement => {
+            match modifier {
+                Modifier::Override | Modifier::Abstract | Modifier::Final | Modifier::Enum |
+                Modifier::Open | Modifier::Annotation | Modifier::Sealed | Modifier::Data |
+                Modifier::Lateinit | Modifier::Private | Modifier::Protected | Modifier::Public |
+                Modifier::Internal | Modifier::Tailrec | Modifier::Operator | Modifier::Infix |
+                Modifier::Inline | Modifier::Suspend | Modifier::Inner => true,
+                _ => false
+            }
+        }
+        ModifierCtx::Package | ModifierCtx::Constructor | ModifierCtx::GetterSetter => {
+            modifier == Modifier::Private || modifier == Modifier::Protected ||
+                modifier == Modifier::Public || modifier == Modifier::Internal
+        }
+        ModifierCtx::ClassMember => {
+            match modifier {
+                Modifier::Abstract | Modifier::Final | Modifier::Enum | Modifier::Override |
+                Modifier::Open | Modifier::Annotation | Modifier::Sealed | Modifier::Data |
+                Modifier::Lateinit | Modifier::Private | Modifier::Protected | Modifier::Public |
+                Modifier::Internal | Modifier::Tailrec | Modifier::Operator | Modifier::Infix |
+                Modifier::Inline | Modifier::External | Modifier::Suspend | Modifier::Const |
+                Modifier::Expect | Modifier::Actual | Modifier::Inner => true,
+                _ => false
+            }
+        }
+        ModifierCtx::EnumEntry => {
+            modifier == Modifier::Inline
+        }
+        ModifierCtx::FunctionParameter => {
+            modifier == Modifier::Noinline || modifier == Modifier::Crossinline ||
+                modifier == Modifier::Vararg || modifier == Modifier::Override ||
+                modifier == Modifier::Private || modifier == Modifier::Protected ||
+                modifier == Modifier::Public || modifier == Modifier::Internal
+        }
+    };
+
+    s.next();
+
+    if !is_valid {
+        return s.make_error((start, s.save()), ParserError::FoundInvalidModifier {
+            found: modifier,
+            ctx: set,
+        });
     }
+
+    Ok(modifier)
+}
+
+fn get_modifier_by_name(name: &str) -> Option<Modifier> {
+    let modifier = match name {
+        "abstract" => Modifier::Abstract,
+        "final" => Modifier::Final,
+        "enum" => Modifier::Enum,
+        "open" => Modifier::Open,
+        "annotation" => Modifier::Annotation,
+        "sealed" => Modifier::Sealed,
+        "data" => Modifier::Data,
+        "lateinit" => Modifier::Lateinit,
+        "private" => Modifier::Private,
+        "protected" => Modifier::Protected,
+        "public" => Modifier::Public,
+        "internal" => Modifier::Internal,
+        "tailrec" => Modifier::Tailrec,
+        "operator" => Modifier::Operator,
+        "infix" => Modifier::Infix,
+        "inline" => Modifier::Inline,
+        "external" => Modifier::External,
+        "suspend" => Modifier::Suspend,
+        "const" => Modifier::Const,
+        "expect" => Modifier::Expect,
+        "actual" => Modifier::Actual,
+        "in" => Modifier::In,
+        "out" => Modifier::Out,
+        "reified" => Modifier::Reified,
+        "inner" => Modifier::Inner,
+        "noinline" => Modifier::Noinline,
+        "crossinline" => Modifier::Crossinline,
+        "vararg" => Modifier::Vararg,
+        "override" => Modifier::Override,
+        _ => {
+            return None;
+        }
+    };
+
+    Some(modifier)
 }
 
 fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> {

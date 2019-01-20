@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
+use crate::analyzer::semantic_rules::modifiers::check_modifiers;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
 use crate::parser::ast::*;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
+
+mod modifiers;
 
 pub struct Checker {
     code: SourceCode,
@@ -106,7 +109,7 @@ fn check_top_level_object(ctx: &mut Checker, obj: &TopLevelObject) {
 }
 
 fn check_class(ctx: &mut Checker, class: &Class, path: Path) {
-    report_duplicated_modifiers(ctx, &class.modifiers);
+    check_modifiers(ctx, &class.modifiers, ModifierCtx::TopLevelObject);
     // TODO check modifiers are applicable to a class
     // check modifiers are applicable to the correct class type: 'enum interface'
 
@@ -123,7 +126,7 @@ fn check_class(ctx: &mut Checker, class: &Class, path: Path) {
 }
 
 fn check_object(ctx: &mut Checker, obj: &Object, path: Path) {
-    report_duplicated_modifiers(ctx, &obj.modifiers);
+    check_modifiers(ctx, &obj.modifiers, ModifierCtx::TopLevelObject);
     // TODO check modifiers are applicable to a class
     // check modifiers are applicable to the correct class type: 'enum object'
 
@@ -144,7 +147,7 @@ fn check_object(ctx: &mut Checker, obj: &Object, path: Path) {
 }
 
 fn check_function(ctx: &mut Checker, fun: &Function, path: Path) {
-    report_duplicated_modifiers(ctx, &fun.modifiers);
+    check_modifiers(ctx, &fun.modifiers, ModifierCtx::TopLevelObject);
     // Duplicated type parameters
     // Types in first type parameters
 //    fun.type_parameters;
@@ -159,7 +162,7 @@ fn check_function(ctx: &mut Checker, fun: &Function, path: Path) {
 }
 
 fn check_property(ctx: &mut Checker, prop: &Property, path: Path) {
-    report_duplicated_modifiers(ctx, &prop.modifiers);
+    check_modifiers(ctx, &prop.modifiers, ModifierCtx::TopLevelObject);
     // Duplicated type parameters
     // Types in first type parameters
 //    fun.type_parameters;
@@ -176,7 +179,7 @@ fn check_property(ctx: &mut Checker, prop: &Property, path: Path) {
 }
 
 fn check_typealias(ctx: &mut Checker, alias: &TypeAlias, path: Path) {
-    report_duplicated_modifiers(ctx, &alias.modifiers);
+    check_modifiers(ctx, &alias.modifiers, ModifierCtx::TopLevelObject);
     // Duplicated type parameters
     // Types in first type parameters
 
@@ -197,18 +200,6 @@ fn check_member(ctx: &mut Checker, member: &Member, path: Path) {
         Member::TypeAlias(it) => { check_typealias(ctx, it, path); }
         Member::AnonymousInitializer(_) => {}
         Member::SecondaryConstructor(_) => {}
-    }
-}
-
-fn report_duplicated_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
-    let mut names: HashSet<String> = HashSet::new();
-    for x in mods {
-        if names.contains(&x.name) {
-            ctx.errors.push(((0, 0), AnalyserError::DuplicatedModifier {
-                modifier: x.clone(),
-            }));
-        }
-        names.insert(x.name.clone());
     }
 }
 

@@ -11,6 +11,7 @@ use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::source_code::to_str;
 use crate::tokenizer::token::Token;
+use crate::parser::ast::ModifierCtx;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
@@ -28,6 +29,7 @@ pub enum ParserError {
     UnexpectedToken { found: Token },
     ExpectedToken { expected: Token, found: Token },
     ExpectedTokenId { found: Token },
+    FoundInvalidModifier { found: Modifier, ctx: ModifierCtx },
     ExpectedTokenOf { found: Token, options: Vec<Token> },
 }
 
@@ -144,13 +146,13 @@ fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &T
 fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &AnalyserError) -> Result<(), Error> {
     match error {
         AnalyserError::InvalidModifierUsage { modifier, context } => {
-            write!(f, "Modifier '{}' is not applicable in {}\n", modifier.name, context)?;
+            write!(f, "Modifier '{:?}' is not applicable in {}\n", modifier, context)?;
         }
         AnalyserError::ConflictingImport { name } => {
             write!(f, "Conflicting import, imported name '{}' is ambiguous\n", name)?;
         }
         AnalyserError::DuplicatedModifier { modifier } => {
-            write!(f, "Duplicated modifier '{}'\n", modifier.name)?;
+            write!(f, "Duplicated modifier '{:?}'\n", modifier)?;
         }
         AnalyserError::DestructuringInTopLevel => {
             write!(f, "Variable destructuring is only available in local properties\n")?;
@@ -185,6 +187,20 @@ fn print_parser_error(f: &mut Write, code: &SourceCode, span: Span, error: &Pars
             for x in options {
                 write!(f, " - {}\n", x)?;
             }
+        }
+        ParserError::FoundInvalidModifier { found, ctx } => {
+            let ctx_name = match ctx {
+                ModifierCtx::TopLevelObject => "top level",
+                ModifierCtx::TypeParameter => "type parameter",
+                ModifierCtx::Statement => "statement",
+                ModifierCtx::Package => "package",
+                ModifierCtx::Constructor => "constructor",
+                ModifierCtx::GetterSetter => "getter/setter",
+                ModifierCtx::ClassMember => "class member",
+                ModifierCtx::EnumEntry => "enum entry",
+                ModifierCtx::FunctionParameter => "parameter",
+            };
+            write!(f, "Modifier '{:?}' is not applicable to '{}'\n", found, ctx_name)?;
         }
     }
 

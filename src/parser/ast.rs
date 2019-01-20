@@ -58,10 +58,57 @@ pub struct PackageHeader {
     pub path: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct Modifier {
-    pub name: String,
+//#[derive(Clone, PartialEq, Debug)]
+//pub struct Modifier {
+//    pub name: String,
+//}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ModifierCtx {
+    TopLevelObject,
+    TypeParameter,
+    Statement,
+    Package,
+    Constructor,
+    GetterSetter,
+    ClassMember,
+    EnumEntry,
+    FunctionParameter,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Modifier {
+    Abstract,
+    Final,
+    Enum,
+    Open,
+    Annotation,
+    Sealed,
+    Data,
+    Lateinit,
+    Private,
+    Protected,
+    Public,
+    Internal,
+    Tailrec,
+    Operator,
+    Infix,
+    Inline,
+    External,
+    Suspend,
+    Const,
+    Expect,
+    Actual,
+    In,
+    Out,
+    Reified,
+    Inner,
+    Noinline,
+    Crossinline,
+    Vararg,
+    Override,
+}
+
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum TopLevelObject {

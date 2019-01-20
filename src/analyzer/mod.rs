@@ -33,6 +33,6 @@ mod tests {
     fn check_types() {
         let ast = get_ast(from_str(include_str!("../../examples/Fibonacci.kt")));
         TypeChecker::run(&ast);
-        assert_eq!(1, 0);
+//        assert_eq!(1, 0);
     }
 }
