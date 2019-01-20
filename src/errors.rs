@@ -4,14 +4,14 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 use std::fmt::Write;
 
-use crate::parser::ast::Modifier;
 use crate::Number;
+use crate::parser::ast::Modifier;
+use crate::parser::ast::ModifierCtx;
 use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 use crate::source_code::to_str;
 use crate::tokenizer::token::Token;
-use crate::parser::ast::ModifierCtx;
 
 #[derive(Debug, Clone)]
 pub enum TokenizerError {
@@ -37,6 +37,7 @@ pub enum ParserError {
 pub enum AnalyserError {
     InvalidModifierUsage { modifier: Modifier, context: String },
     DuplicatedModifier { modifier: Modifier },
+    MutuallyExclusiveModifier { modifier_1: Modifier, modifier_2: Modifier },
     ConflictingImport { name: String },
     DestructuringInTopLevel,
 }
@@ -156,6 +157,9 @@ fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &An
         }
         AnalyserError::DestructuringInTopLevel => {
             write!(f, "Variable destructuring is only available in local properties\n")?;
+        }
+        AnalyserError::MutuallyExclusiveModifier { modifier_1, modifier_2 } => {
+            write!(f, "Modifier '{:?}' is incompatible with '{:?}'\n", modifier_1, modifier_2)?;
         }
     }
 
