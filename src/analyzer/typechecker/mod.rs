@@ -6,8 +6,11 @@ use crate::parser::ast::*;
 
 mod type_reference_getter;
 mod type_info_collector;
+mod type_resolver;
 
-pub struct TypeChecker;
+pub struct TypeChecker {
+    types: HashMap<String, TypeInfo>
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
@@ -47,6 +50,12 @@ impl FunctionInfo {
     pub fn new(fun: &Function) -> Self {
         Self {}
     }
+    pub fn from_primary_constructor(fun: &PrimaryConstructor) -> Self {
+        Self {}
+    }
+    pub fn from_secondary_constructor(fun: &SecondaryConstructor) -> Self {
+        Self {}
+    }
 }
 
 impl PropertyInfo {
@@ -71,12 +80,15 @@ impl TypeInfo {
 
 impl TypeChecker {
     pub fn run(ast: &KotlinFile) {
+        let mut checker = TypeChecker{
+            types: HashMap::new()
+        };
         let refs = get_all_references_to_types(ast);
-        let mut types: HashMap<String, TypeInfo> = HashMap::new();
 
-        collect_all_types_info(&mut types, ast);
+        collect_all_types_info(&mut checker.types, ast);
+
+//        TypeResolver::resolve(&checker, &ast);
 
         dbg!(refs);
-        dbg!(types);
     }
 }

@@ -130,6 +130,9 @@ fn check_object(ctx: &mut Checker, obj: &Object, path: Path) {
     // TODO check modifiers are applicable to a class
     // check modifiers are applicable to the correct class type: 'enum object'
 
+    // objects doesn't have constructors
+
+
     if let Some(it) = &obj.body {
         let mut path = path.clone();
         path.push(obj.name.clone());

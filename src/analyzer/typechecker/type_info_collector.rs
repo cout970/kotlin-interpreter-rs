@@ -26,17 +26,16 @@ pub fn collect_all_types_info(types: &mut DefinedTypes, ast: &KotlinFile) {
     }
 }
 
-
 fn collect_top_level_object_info(refs: &mut DefinedTypes, obj: &TopLevelObject, path: Vec<String>) {
     match obj {
         TopLevelObject::Object(obj) => {
             collect_object_info(refs, obj, path);
         }
-        TopLevelObject::Function(fun) => {}
-        TopLevelObject::Property(prop) => {}
         TopLevelObject::Class(class) => {
             collect_class_info(refs, class, path);
         }
+        TopLevelObject::Function(fun) => {}
+        TopLevelObject::Property(prop) => {}
         TopLevelObject::TypeAlias(alias) => {}
     }
 }
@@ -44,7 +43,10 @@ fn collect_top_level_object_info(refs: &mut DefinedTypes, obj: &TopLevelObject, 
 fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>) {
     let mut ty = TypeInfo::new(&class.name, &path);
 
-    // Body
+    if let Some(ctor) = &class.primary_constructor {
+        ty.functions.insert(class.name.to_owned(), FunctionInfo::from_primary_constructor(ctor));
+    }
+
     if let Some(it) = &class.body {
         for member in &it.members {
             match member {
@@ -75,7 +77,9 @@ fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>)
                 }
                 Member::TypeAlias(_) => {}
                 Member::AnonymousInitializer(_) => {}
-                Member::SecondaryConstructor(_) => {}
+                Member::SecondaryConstructor(ctor) => {
+                    ty.functions.insert(class.name.to_owned(), FunctionInfo::from_secondary_constructor(ctor));
+                }
             }
         }
     }
@@ -86,9 +90,10 @@ fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>)
 fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>) {
     let mut ty = TypeInfo::new(&obj.name, &path);
 
-    // TODO constructors
+//    if let Some(ctor) = &obj.primary_constructor {
+//        ty.functions.insert(fun.name.to_owned(), FunctionInfo::from_primary_constructor(ctor));
+//    }
 
-    // Body
     if let Some(it) = &obj.body {
         for member in &it.members {
             match member {
@@ -115,7 +120,9 @@ fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>)
                 }
                 Member::TypeAlias(_) => {}
                 Member::AnonymousInitializer(_) => {}
-                Member::SecondaryConstructor(_) => {}
+                Member::SecondaryConstructor(ctor) => {
+                    ty.functions.insert(obj.name.to_owned(), FunctionInfo::from_secondary_constructor(ctor));
+                }
             }
         }
     }

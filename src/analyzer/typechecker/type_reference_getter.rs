@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::parser::ast::*;
@@ -5,19 +6,28 @@ use crate::parser::ast::*;
 struct RefVec {
     pub types: HashSet<String>,
     pub type_params: Vec<HashSet<String>>,
+    pub alias: HashMap<String, String>,
 }
 
 pub fn get_all_references_to_types(file: &KotlinFile) -> Vec<String> {
+    let mut alias = HashMap::new();
+
+    for import in &file.preamble.imports {
+        if let Some(a) = &import.alias {
+            alias.insert(a.clone(), import.path.last().unwrap().clone());
+        }
+    }
+
     let mut refs = RefVec {
         types: HashSet::new(),
         type_params: vec![],
+        alias,
     };
 
     for obj in &file.objects {
         get_top_level_object_references(&mut refs, obj);
     }
 
-    // TODO apply import alias
     debug_assert_eq!(refs.type_params.len(), 0);
     refs.types.into_iter().collect::<Vec<_>>()
 }
@@ -48,7 +58,12 @@ fn get_simple_user_type_references(refs: &mut RefVec, user_type: &UserType) {
             return;
         }
     }
-    refs.types.insert(name);
+
+    if let Some(it) = refs.alias.get(&name) {
+        refs.types.insert(it.clone());
+    } else {
+        refs.types.insert(name);
+    }
 }
 
 fn get_top_level_object_references(refs: &mut RefVec, obj: &TopLevelObject) {

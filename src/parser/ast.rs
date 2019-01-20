@@ -157,7 +157,6 @@ pub struct PropertySetter {
     pub body: Option<FunctionBody>,
 }
 
-// TODO add span to expressions
 pub type ExprVal = (Span, Expr);
 pub type ExprRef = Arc<(Span, Expr)>;
 pub type Block = (Span, Vec<Statement>);
