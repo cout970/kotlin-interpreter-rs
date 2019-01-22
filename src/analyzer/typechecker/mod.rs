@@ -6,7 +6,7 @@ use crate::parser::ast::*;
 
 mod type_reference_getter;
 mod type_info_collector;
-mod type_resolver;
+mod compiler;
 
 pub struct TypeChecker {
     types: HashMap<String, TypeInfo>
