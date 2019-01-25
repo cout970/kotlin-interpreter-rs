@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::parser::ast::*;
+use crate::parser::parse_tree::*;
 
 struct RefVec {
     pub types: HashSet<String>,

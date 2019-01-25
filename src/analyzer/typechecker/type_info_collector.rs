@@ -3,16 +3,20 @@ use std::collections::HashSet;
 
 use crate::analyzer::typechecker::ClassInfo;
 use crate::analyzer::typechecker::FunctionInfo;
+use crate::analyzer::typechecker::Kind;
 use crate::analyzer::typechecker::ObjectInfo;
 use crate::analyzer::typechecker::PropertyInfo;
 use crate::analyzer::typechecker::TypeInfo;
-use crate::parser::ast::*;
-use crate::parser::ast::KotlinFile;
+use crate::parser::parse_tree::*;
+use crate::parser::parse_tree::KotlinFile;
 use crate::vec_with;
 
-type DefinedTypes = HashMap<String, TypeInfo>;
+struct DefinedTypes<'t> {
+    types: HashMap<String, TypeInfo>,
+    file: &'t KotlinFile,
+}
 
-pub fn collect_all_types_info(types: &mut DefinedTypes, ast: &KotlinFile) {
+fn collect_all_types_info(types: &mut DefinedTypes, ast: &KotlinFile) {
     let empty = vec![];
 
     let path = if let Some(pck) = &ast.preamble.package_header {
@@ -41,7 +45,7 @@ fn collect_top_level_object_info(refs: &mut DefinedTypes, obj: &TopLevelObject, 
 }
 
 fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>) {
-    let mut ty = TypeInfo::new(&class.name, &path);
+    let mut ty = TypeInfo::new(&class.name, &path, Kind::Class(ClassInfo::new(refs.file, class)));
 
     if let Some(ctor) = &class.primary_constructor {
         ty.functions.insert(class.name.to_owned(), FunctionInfo::from_primary_constructor(ctor));
@@ -51,11 +55,11 @@ fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>)
         for member in &it.members {
             match member {
                 Member::Object(sub_obj) => {
-                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(sub_obj));
+                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(refs.file, sub_obj));
                     collect_object_info(refs, sub_obj, vec_with(&path, class.name.to_owned()));
                 }
                 Member::Class(sub_obj) => {
-                    ty.classes.insert(sub_obj.name.to_owned(), ClassInfo::new(sub_obj));
+                    ty.classes.insert(sub_obj.name.to_owned(), ClassInfo::new(refs.file, sub_obj));
                     collect_class_info(refs, sub_obj, vec_with(&path, class.name.to_owned()));
                 }
                 Member::Function(fun) => {
@@ -72,7 +76,7 @@ fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>)
                     } else {
                         &sub_obj.name
                     };
-                    ty.objects.insert(name.to_owned(), ObjectInfo::new(sub_obj));
+                    ty.objects.insert(name.to_owned(), ObjectInfo::new(refs.file, sub_obj));
                     collect_object_info(refs, sub_obj, vec_with(&path, class.name.to_owned()));
                 }
                 Member::TypeAlias(_) => {}
@@ -84,11 +88,11 @@ fn collect_class_info(refs: &mut DefinedTypes, class: &Class, path: Vec<String>)
         }
     }
 
-    refs.insert(class.name.to_owned(), ty);
+//    refs.insert(class.name.to_owned(), ty);
 }
 
 fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>) {
-    let mut ty = TypeInfo::new(&obj.name, &path);
+    let mut ty = TypeInfo::new(&obj.name, &path, Kind::Object(ObjectInfo::new(refs.file, obj)));
 
 //    if let Some(ctor) = &obj.primary_constructor {
 //        ty.functions.insert(fun.name.to_owned(), FunctionInfo::from_primary_constructor(ctor));
@@ -98,11 +102,11 @@ fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>)
         for member in &it.members {
             match member {
                 Member::Object(sub_obj) => {
-                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(sub_obj));
+                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(refs.file, sub_obj));
                     collect_object_info(refs, sub_obj, vec_with(&path, obj.name.to_owned()));
                 }
                 Member::Class(sub_obj) => {
-                    ty.classes.insert(sub_obj.name.to_owned(), ClassInfo::new(sub_obj));
+                    ty.classes.insert(sub_obj.name.to_owned(), ClassInfo::new(refs.file, sub_obj));
                     collect_class_info(refs, sub_obj, vec_with(&path, obj.name.to_owned()));
                 }
                 Member::Function(fun) => {
@@ -115,7 +119,7 @@ fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>)
                 }
                 Member::CompanionObject(sub_obj) => {
                     assert_eq!(sub_obj.name.is_empty(), false);
-                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(sub_obj));
+                    ty.objects.insert(sub_obj.name.to_owned(), ObjectInfo::new(refs.file, sub_obj));
                     collect_object_info(refs, sub_obj, vec_with(&path, obj.name.to_owned()));
                 }
                 Member::TypeAlias(_) => {}
@@ -127,5 +131,5 @@ fn collect_object_info(refs: &mut DefinedTypes, obj: &Object, path: Vec<String>)
         }
     }
 
-    refs.insert(obj.name.to_owned(), ty);
+//    refs.insert(obj.name.to_owned(), ty);
 }

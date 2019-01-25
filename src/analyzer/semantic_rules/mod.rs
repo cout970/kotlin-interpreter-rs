@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::analyzer::semantic_rules::modifiers::check_modifiers;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
-use crate::parser::ast::*;
+use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
 

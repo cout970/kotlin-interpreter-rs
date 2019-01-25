@@ -84,6 +84,7 @@ fn vec_with<T: Clone>(vec: &Vec<T>, new: T) -> Vec<T> {
     new_vec
 }
 
+
 #[inline]
 fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
     src.into_iter().map(func).collect::<Vec<B>>()

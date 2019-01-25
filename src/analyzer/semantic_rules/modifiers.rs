@@ -3,8 +3,8 @@ use std::collections::HashSet;
 
 use crate::analyzer::semantic_rules::Checker;
 use crate::errors::AnalyserError;
-use crate::parser::ast::Modifier;
-use crate::parser::ast::ModifierCtx;
+use crate::parser::parse_tree::Modifier;
+use crate::parser::parse_tree::ModifierCtx;
 
 
 pub fn check_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>, modifier_ctx: ModifierCtx) {

@@ -5,8 +5,8 @@ use std::fmt::Formatter;
 use std::fmt::Write;
 
 use crate::Number;
-use crate::parser::ast::Modifier;
-use crate::parser::ast::ModifierCtx;
+use crate::parser::parse_tree::Modifier;
+use crate::parser::parse_tree::ModifierCtx;
 use crate::source_code::print_code_location;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
@@ -39,6 +39,10 @@ pub enum AnalyserError {
     DuplicatedModifier { modifier: Modifier },
     MutuallyExclusiveModifier { modifier_1: Modifier, modifier_2: Modifier },
     ConflictingImport { name: String },
+    MultipleInheritance,
+    ExtendingNonClass,
+    ExtendingFinalClass,
+    MissingConstructorCall,
     DestructuringInTopLevel,
 }
 
@@ -160,6 +164,9 @@ fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &An
         }
         AnalyserError::MutuallyExclusiveModifier { modifier_1, modifier_2 } => {
             write!(f, "Modifier '{:?}' is incompatible with '{:?}'\n", modifier_1, modifier_2)?;
+        }
+        _ => {
+            write!(f, "TODO {:?}\n", error)?;
         }
     }
 

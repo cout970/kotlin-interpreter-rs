@@ -4,7 +4,7 @@ use crate::create_vec;
 use crate::errors::KtError;
 use crate::errors::ParserError;
 use crate::map;
-use crate::parser::ast::*;
+use crate::parser::parse_tree::*;
 use crate::parser::token_cursor::TokenCursor;
 use crate::source_code::Span;
 use crate::tokenizer::token::Token;

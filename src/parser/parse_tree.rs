@@ -408,7 +408,7 @@ pub struct FunctionType {
     pub return_type: Arc<TypeReference>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Copy)]
 pub enum ClassType {
     Class,
     Interface,
@@ -514,4 +514,10 @@ pub struct AnnotatedLambda {
 pub struct FunctionLiteral {
     pub parameters: Vec<VariableDeclarationEntry>,
     pub statements: Vec<Statement>,
+}
+
+impl KotlinFile {
+    pub fn get_package_str(&self) -> String {
+        self.preamble.package_header.as_ref().unwrap().path.join(".")
+    }
 }

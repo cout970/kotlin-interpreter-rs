@@ -7,7 +7,7 @@ mod tests {
 
     use crate::analyzer::semantic_rules::Checker;
     use crate::analyzer::typechecker::TypeChecker;
-    use crate::parser::ast::KotlinFile;
+    use crate::parser::parse_tree::KotlinFile;
     use crate::parser::Parser;
     use crate::source_code::from_str;
     use crate::source_code::SourceCode;
@@ -31,8 +31,9 @@ mod tests {
 
     #[test]
     fn check_types() {
-        let ast = get_ast(from_str(include_str!("../../examples/Fibonacci.kt")));
-        TypeChecker::run(&ast);
+        let code = from_str(include_str!("../../examples/Fibonacci.kt"));
+        let ast = get_ast(code.clone());
+        TypeChecker::run(code.clone(), &ast);
 //        assert_eq!(1, 0);
     }
 }
