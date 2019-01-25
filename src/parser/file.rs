@@ -500,7 +500,7 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
         }
         Token::LeftBracket => {
             s.expect(Token::LeftBracket)?;
-            let expr = read_expresion(s)?;
+            let expr = s.separated_by(Token::Comma, &read_expresion)?;
             s.expect(Token::RightBracket)?;
             ExprPostfix::ArrayAccess(expr)
         }

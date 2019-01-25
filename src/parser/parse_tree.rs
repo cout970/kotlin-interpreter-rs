@@ -269,7 +269,7 @@ pub enum ExprPostfix {
     Increment,
     Decrement,
     AssertNonNull,
-    ArrayAccess(ExprVal),
+    ArrayAccess(Vec<ExprVal>),
     FunCall(CallSuffix),
     MemberAccess { operator: String, next: ExprVal },
 }

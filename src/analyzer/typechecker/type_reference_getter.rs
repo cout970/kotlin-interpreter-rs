@@ -479,8 +479,8 @@ fn get_expr_references(refs: &mut RefVec, expr: &Expr) {
                     ExprPostfix::Increment => {}
                     ExprPostfix::Decrement => {}
                     ExprPostfix::AssertNonNull => {}
-                    ExprPostfix::ArrayAccess((_, e)) => {
-                        get_expr_references(refs, e);
+                    ExprPostfix::ArrayAccess(_i) => {
+//                        get_expr_references(refs, e);
                     }
                     ExprPostfix::FunCall(suffix) => {
                         get_call_suffix_references(refs, suffix);

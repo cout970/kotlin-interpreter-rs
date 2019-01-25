@@ -93,11 +93,12 @@ fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+
+    use crate::analyzer::semantic_rules::Checker;
+    use crate::analyzer::typechecker::TypeChecker;
     use crate::tokenizer::Tokenizer;
 
     use super::*;
-    use crate::analyzer::semantic_rules::Checker;
-    use crate::analyzer::typechecker::TypeChecker;
 
     #[test]
     #[ignore]
@@ -123,6 +124,6 @@ mod tests {
 
             index += 1;
         }
-        assert_ne!(0,0);
+        assert_ne!(0, 0);
     }
 }
