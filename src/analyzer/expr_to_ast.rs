@@ -3,16 +3,35 @@ use std::rc::Rc;
 use crate::analyzer::ast::*;
 use crate::analyzer::ast::AstProperty;
 use crate::create_vec;
+use crate::errors::AnalyserError;
+use crate::errors::KtError;
 use crate::interpreter::bytecode::Constant;
 use crate::Number;
 use crate::parser::parse_tree::*;
+use crate::source_code::SourceCode;
 use crate::source_code::Span;
 
 struct Context {
-    errors: Vec<String>,
+    code: SourceCode,
+    errors: Vec<KtError>,
 }
 
-pub fn file_to_ast(file: KotlinFile) -> AstFile {
+impl Context {
+    fn new_error(&mut self, span: Span, info: AnalyserError) {
+        self.errors.push(KtError::Analyser {
+            code: self.code.clone(),
+            span,
+            info,
+        })
+    }
+}
+
+fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
+    let mut ctx = Context {
+        code: code.clone(),
+        errors: vec![],
+    };
+
     let mut classes = vec![];
     let mut functions = vec![];
     let mut properties = vec![];
@@ -20,16 +39,16 @@ pub fn file_to_ast(file: KotlinFile) -> AstFile {
     for tlo in &file.objects {
         match tlo {
             TopLevelObject::Class(class) => {
-                classes.push(class_to_ast(class));
+                classes.push(class_to_ast(&mut ctx, class));
             }
             TopLevelObject::Object(obj) => {
-                classes.push(object_to_ast(obj));
+                classes.push(object_to_ast(&mut ctx, obj));
             }
             TopLevelObject::Function(fun) => {
-                functions.push(function_to_ast(fun));
+                functions.push(function_to_ast(&mut ctx, fun));
             }
             TopLevelObject::Property(prop) => {
-                properties.push(property_to_ast(prop));
+                properties.push(property_to_ast(&mut ctx, prop));
             }
             TopLevelObject::TypeAlias(_) => {
                 unimplemented!()
@@ -37,30 +56,33 @@ pub fn file_to_ast(file: KotlinFile) -> AstFile {
         }
     }
 
-    AstFile {
-        package: file.get_package_str(),
-        classes,
-        functions,
-        properties,
-    }
+    (
+        AstFile {
+            package: file.get_package_str(),
+            classes,
+            functions,
+            properties,
+        },
+        ctx.errors
+    )
 }
 
-pub fn statement_to_ast(statement: &Statement) -> AstStatement {
+fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
     match statement {
-        Statement::Expr(e) => AstStatement::Expr(expr_to_ast(e)),
+        Statement::Expr(e) => AstStatement::Expr(expr_to_ast(ctx, e)),
         Statement::Decl(decl) => {
             match decl {
                 Declaration::Class(class) => {
-                    AstStatement::Class(class_to_ast(class))
+                    AstStatement::Class(class_to_ast(ctx, class))
                 }
                 Declaration::Object(obj) => {
-                    AstStatement::Class(object_to_ast(obj))
+                    AstStatement::Class(object_to_ast(ctx, obj))
                 }
                 Declaration::Function(fun) => {
-                    AstStatement::Function(function_to_ast(fun))
+                    AstStatement::Function(function_to_ast(ctx, fun))
                 }
                 Declaration::Property(prop) => {
-                    AstStatement::Property(property_to_local_ast(prop))
+                    AstStatement::Property(property_to_local_ast(ctx, prop))
                 }
                 Declaration::TypeAlias(_) => {
                     panic!("Not supported")
@@ -70,12 +92,12 @@ pub fn statement_to_ast(statement: &Statement) -> AstStatement {
     }
 }
 
-fn class_to_ast(class: &Class) -> AstClass {
+fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     let mut body = vec![];
 
     if let Some(b) = &class.body {
         for member in &b.members {
-            body.push(member_to_ast(member))
+            body.push(member_to_ast(ctx, member))
         }
     }
 
@@ -85,12 +107,12 @@ fn class_to_ast(class: &Class) -> AstClass {
     }
 }
 
-fn object_to_ast(class: &Object) -> AstClass {
+fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     let mut body = vec![];
 
     if let Some(b) = &class.body {
         for member in &b.members {
-            body.push(member_to_ast(member))
+            body.push(member_to_ast(ctx, member))
         }
     }
 
@@ -100,12 +122,12 @@ fn object_to_ast(class: &Object) -> AstClass {
     }
 }
 
-fn member_to_ast(member: &Member) -> AstMember {
+fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
     match member {
-        Member::Object(obj) => AstMember::Class(object_to_ast(obj)),
-        Member::Function(fun) => AstMember::Function(function_to_ast(fun)),
-        Member::Property(prop) => AstMember::Property(property_to_ast(prop)),
-        Member::Class(class) => AstMember::Class(class_to_ast(class)),
+        Member::Object(obj) => AstMember::Class(object_to_ast(ctx, obj)),
+        Member::Function(fun) => AstMember::Function(function_to_ast(ctx, fun)),
+        Member::Property(prop) => AstMember::Property(property_to_ast(ctx, prop)),
+        Member::Class(class) => AstMember::Class(class_to_ast(ctx, class)),
         Member::CompanionObject(_) => {
             // Ignored
             unimplemented!()
@@ -125,23 +147,23 @@ fn member_to_ast(member: &Member) -> AstMember {
 }
 
 
-fn property_to_ast(prop: &Property) -> AstProperty {
+fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
-        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(expr))),
-        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(expr))),
+        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
+        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(ctx, expr))),
     };
 
     let vars = if prop.declarations.len() == 1 {
         let decl = prop.declarations.first().unwrap();
         vec![AstVar {
             name: decl.name.to_owned(),
-            ty: decl.declared_type.as_ref().map(type_to_ast),
+            ty: decl.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
             mutable: prop.mutable,
         }]
     } else {
         prop.declarations.iter()
-            .map(|decl| var_to_ast(prop.mutable, decl))
+            .map(|decl| var_to_ast(ctx, prop.mutable, decl))
             .collect()
     };
 
@@ -153,11 +175,11 @@ fn property_to_ast(prop: &Property) -> AstProperty {
 }
 
 
-fn function_to_ast(fun: &Function) -> AstFunction {
+fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     let body = fun.body.as_ref().map(|body| {
         match body {
-            FunctionBody::Block(e) => block_to_ast(e),
-            FunctionBody::Expression(e) => expr_to_ast(e),
+            FunctionBody::Block(e) => block_to_ast(ctx, e),
+            FunctionBody::Expression(e) => expr_to_ast(ctx, e),
         }
     });
 
@@ -165,7 +187,7 @@ fn function_to_ast(fun: &Function) -> AstFunction {
     for param in &fun.value_parameters {
         args.push(AstVar {
             name: param.name.to_owned(),
-            ty: Some(type_to_ast(&param.ty)),
+            ty: Some(type_to_ast(ctx, &param.ty)),
             mutable: false,
         })
         // TODO this should be in the function's block code
@@ -176,28 +198,28 @@ fn function_to_ast(fun: &Function) -> AstFunction {
         extension: fun.receiver.is_some(),
         name: fun.name.to_owned(),
         args,
-        return_ty: fun.return_type.as_ref().map(type_to_ast),
+        return_ty: fun.return_type.as_ref().map(|it| type_to_ast(ctx, it)),
         body,
     }
 }
 
-fn property_to_local_ast(prop: &Property) -> AstLocalProperty {
+fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
-        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(expr))),
-        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(expr))),
+        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
+        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(ctx, expr))),
     };
 
     let vars = if prop.declarations.len() == 1 {
         let decl = prop.declarations.first().unwrap();
         vec![AstVar {
             name: decl.name.to_owned(),
-            ty: decl.declared_type.as_ref().map(type_to_ast),
+            ty: decl.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
             mutable: prop.mutable,
         }]
     } else {
         prop.declarations.iter()
-            .map(|decl| var_to_ast(prop.mutable, decl))
+            .map(|decl| var_to_ast(ctx, prop.mutable, decl))
             .collect()
     };
 
@@ -208,7 +230,7 @@ fn property_to_local_ast(prop: &Property) -> AstLocalProperty {
     }
 }
 
-pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
+fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
     let span = expr.0;
     match &expr.1 {
         Expr::Null => {
@@ -259,90 +281,90 @@ pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
             }
         }
         Expr::Chain { operands, operators } => {
-            expr_chain_to_tree(operands, operators)
+            expr_chain_to_tree(ctx, operands, operators)
         }
         Expr::InfixFun { parameters, functions } => {
-            expr_chain_to_tree(parameters, functions)
+            expr_chain_to_tree(ctx, parameters, functions)
         }
         Expr::Prefix { prefix, expr } => {
-            convert_prefix_to_expr(span, prefix, expr)
+            convert_prefix_to_expr(ctx, span, prefix, expr)
         }
         Expr::Postfix { expr, postfix } => {
-            convert_postfix_to_expr(span, expr, postfix)
+            convert_postfix_to_expr(ctx, span, expr, postfix)
         }
         Expr::Is { expr, ty } => {
             AstExpr::Is {
                 span,
-                expr: Rc::new(expr_to_ast(expr)),
-                ty: type_to_ast(ty),
+                expr: Rc::new(expr_to_ast(ctx, expr)),
+                ty: type_to_ast(ctx, ty),
             }
         }
         Expr::If { cond, if_true, if_false } => {
             AstExpr::If {
                 span,
-                cond: Rc::new(expr_to_ast(cond)),
-                if_true: Rc::new(block_to_ast(if_true)),
-                if_false: if_false.as_ref().map(|it| Rc::new(block_to_ast(&it))),
+                cond: Rc::new(expr_to_ast(ctx, cond)),
+                if_true: Rc::new(block_to_ast(ctx, if_true)),
+                if_false: if_false.as_ref().map(|it| Rc::new(block_to_ast(ctx, &it))),
             }
         }
         Expr::For { variables, expr, body, .. } => {
-            let variables = variables.iter().map(|it| var_to_ast(false, it)).collect::<Vec<_>>();
+            let variables = variables.iter().map(|it| var_to_ast(ctx, false, it)).collect::<Vec<_>>();
             AstExpr::For {
                 span,
                 variables,
-                expr: Rc::new(expr_to_ast(expr)),
-                body: Rc::new(block_to_ast(body)),
+                expr: Rc::new(expr_to_ast(ctx, expr)),
+                body: Rc::new(block_to_ast(ctx, body)),
             }
         }
         Expr::While { expr, body } => {
             AstExpr::While {
                 span,
-                expr: Rc::new(expr_to_ast(expr)),
-                body: Rc::new(block_to_ast(body)),
+                expr: Rc::new(expr_to_ast(ctx, expr)),
+                body: Rc::new(block_to_ast(ctx, body)),
             }
         }
         Expr::DoWhile { expr, body } => {
             AstExpr::DoWhile {
                 span,
-                expr: Rc::new(expr_to_ast(expr)),
-                body: Rc::new(block_to_ast(body)),
+                expr: Rc::new(expr_to_ast(ctx, expr)),
+                body: Rc::new(block_to_ast(ctx, body)),
             }
         }
         Expr::String(parts) => {
-            convert_string_template_to_expr(span, parts)
+            convert_string_template_to_expr(ctx, span, parts)
         }
         Expr::When { expr, entries } => {
-            convert_when_to_ifs(span, expr, entries)
+            convert_when_to_ifs(ctx, span, expr, entries)
         }
         Expr::Try { block, catch_blocks, finally } => {
             let catch = catch_blocks.iter()
                 .map(|b| (
                     AstVar {
                         name: b.name.to_owned(),
-                        ty: Some(simple_user_type_to_ast(span, &b.ty)),
+                        ty: Some(simple_user_type_to_ast(ctx, span, &b.ty)),
                         mutable: false,
                     },
-                    block_to_ast(&b.block)
+                    block_to_ast(ctx, &b.block)
                 ))
                 .collect();
 
             AstExpr::Try {
                 span,
-                body: Rc::new(block_to_ast(block)),
+                body: Rc::new(block_to_ast(ctx, block)),
                 catch,
-                finally: finally.as_ref().map(block_to_ast).map(Rc::new),
+                finally: finally.as_ref().map(|it| block_to_ast(ctx, it)).map(Rc::new),
             }
         }
         Expr::Throw(expr) => {
             AstExpr::Throw {
                 span,
-                exception: Rc::new(expr_to_ast(expr)),
+                exception: Rc::new(expr_to_ast(ctx, expr)),
             }
         }
         Expr::Return(opt) => {
             AstExpr::Return {
                 span,
-                value: opt.as_ref().map(|expr| Rc::new(expr_to_ast(&expr))),
+                value: opt.as_ref().map(|expr| Rc::new(expr_to_ast(ctx, &expr))),
             }
         }
         Expr::Continue => {
@@ -362,8 +384,8 @@ pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
     }
 }
 
-fn convert_postfix_to_expr(span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix>) -> AstExpr {
-    let mut ast = expr_to_ast(expr);
+fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix>) -> AstExpr {
+    let mut ast = expr_to_ast(ctx, expr);
     for post in postfix {
         match post {
             ExprPostfix::Increment | ExprPostfix::Decrement => {
@@ -418,7 +440,10 @@ fn convert_postfix_to_expr(span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix
                 };
             }
             ExprPostfix::ArrayAccess(index) => {
-                let args: Vec<AstExpr> = index.iter().map(expr_to_ast).collect();
+                let args: Vec<AstExpr> = index.iter()
+                    .map(|it| expr_to_ast(ctx, it))
+                    .collect();
+
                 ast = AstExpr::Call {
                     span,
                     function: "get".to_owned(),
@@ -437,7 +462,7 @@ fn convert_postfix_to_expr(span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix
     ast
 }
 
-fn convert_prefix_to_expr(span: Span, prefix: &Vec<String>, expr: &ExprRef) -> AstExpr {
+fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, expr: &ExprRef) -> AstExpr {
     assert_eq!(prefix.len(), 1);
     let name = prefix.first().unwrap();
 
@@ -477,7 +502,7 @@ fn convert_prefix_to_expr(span: Span, prefix: &Vec<String>, expr: &ExprRef) -> A
                 _ => panic!("Unexpected prefix: {}", name)
             };
 
-            let e = expr_to_ast(expr);
+            let e = expr_to_ast(ctx, expr);
             AstExpr::Call {
                 span,
                 function: new_name.to_owned(),
@@ -487,7 +512,7 @@ fn convert_prefix_to_expr(span: Span, prefix: &Vec<String>, expr: &ExprRef) -> A
     }
 }
 
-fn convert_string_template_to_expr(span: Span, parts: &Vec<StringComponent>) -> AstExpr {
+fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<StringComponent>) -> AstExpr {
     let mut str_expr = vec![];
 
     // Extract sub expressions
@@ -515,7 +540,7 @@ fn convert_string_template_to_expr(span: Span, parts: &Vec<StringComponent>) -> 
                 str_expr.push(AstExpr::Call {
                     span,
                     function: "toString".to_owned(),
-                    args: vec![expr_to_ast(expr)],
+                    args: vec![expr_to_ast(ctx, expr)],
                 });
             }
         }
@@ -536,14 +561,14 @@ fn convert_string_template_to_expr(span: Span, parts: &Vec<StringComponent>) -> 
     ast
 }
 
-fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEntry>) -> AstExpr {
+fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEntry>) -> AstExpr {
     assert_ne!(entries.len(), 0);
     let mut pairs: Vec<(AstExpr, AstExpr)> = vec![];
     let mut else_value: Option<Rc<AstExpr>> = None;
 
     if let Some(expr) = expr {
         // When with condition
-        let expr = expr_to_ast(expr);
+        let expr = expr_to_ast(ctx, expr);
 
         // Extract pairs and else
         for (pos, entry) in entries.iter().enumerate() {
@@ -558,21 +583,21 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
                     if pos != entries.len() - 1 {
                         panic!("Else must be the last entry");
                     }
-                    else_value = Some(Rc::new(block_to_ast(&entry.body)))
+                    else_value = Some(Rc::new(block_to_ast(ctx, &entry.body)))
                 }
                 WhenCondition::Expr(cond) => {
                     let cmp = AstExpr::Call {
                         span,
                         function: "equals".to_owned(),
-                        args: vec![expr.clone(), expr_to_ast(cond)],
+                        args: vec![expr.clone(), expr_to_ast(ctx, cond)],
                     };
-                    pairs.push((cmp, block_to_ast(&entry.body)));
+                    pairs.push((cmp, block_to_ast(ctx, &entry.body)));
                 }
                 WhenCondition::In { negated, expr: range } => {
                     let mut cmp = AstExpr::Call {
                         span,
                         function: "contains".to_owned(),
-                        args: vec![expr.clone(), expr_to_ast(range)],
+                        args: vec![expr.clone(), expr_to_ast(ctx, range)],
                     };
 
                     if *negated {
@@ -582,13 +607,13 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
                             args: vec![cmp],
                         }
                     }
-                    pairs.push((cmp, block_to_ast(&entry.body)));
+                    pairs.push((cmp, block_to_ast(ctx, &entry.body)));
                 }
                 WhenCondition::Is { negated, ty } => {
                     let mut cmp = AstExpr::Is {
                         span,
                         expr: Rc::new(expr.clone()),
-                        ty: type_to_ast(ty),
+                        ty: type_to_ast(ctx, ty),
                     };
 
                     if *negated {
@@ -598,7 +623,7 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
                             args: vec![cmp],
                         }
                     }
-                    pairs.push((cmp, block_to_ast(&entry.body)));
+                    pairs.push((cmp, block_to_ast(ctx, &entry.body)));
                 }
             }
         }
@@ -618,10 +643,10 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
                     if pos != entries.len() - 1 {
                         panic!("Else must be the last entry");
                     }
-                    else_value = Some(Rc::new(block_to_ast(&entry.body)))
+                    else_value = Some(Rc::new(block_to_ast(ctx, &entry.body)))
                 }
                 WhenCondition::Expr(cond) => {
-                    pairs.push((expr_to_ast(cond), block_to_ast(&entry.body)));
+                    pairs.push((expr_to_ast(ctx, cond), block_to_ast(ctx, &entry.body)));
                 }
                 WhenCondition::In { .. } => {
                     panic!("Invalid condition");
@@ -654,14 +679,14 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
     ast
 }
 
-pub fn type_to_ast(ty: &Type) -> AstType {
+fn type_to_ast(ctx: &mut Context, ty: &Type) -> AstType {
     match ty.reference.as_ref() {
-        TypeReference::Function(func) => type_func_to_ast(ty.span, func),
-        TypeReference::UserType(user) => simple_user_type_to_ast(ty.span, user),
+        TypeReference::Function(func) => type_func_to_ast(ctx, ty.span, func),
+        TypeReference::UserType(user) => simple_user_type_to_ast(ctx, ty.span, user),
         TypeReference::Nullable(reference) => {
             let mut ast = match reference.as_ref() {
-                TypeReference::Function(func) => type_func_to_ast(ty.span, func),
-                TypeReference::UserType(user) => simple_user_type_to_ast(ty.span, user),
+                TypeReference::Function(func) => type_func_to_ast(ctx, ty.span, func),
+                TypeReference::UserType(user) => simple_user_type_to_ast(ctx, ty.span, user),
                 TypeReference::Nullable(reference) => {
                     panic!("Double nullable!")
                 }
@@ -672,7 +697,7 @@ pub fn type_to_ast(ty: &Type) -> AstType {
     }
 }
 
-pub fn type_func_to_ast(span: Span, ty: &FunctionType) -> AstType {
+fn type_func_to_ast(ctx: &mut Context, span: Span, ty: &FunctionType) -> AstType {
     AstType {
         span,
         name: "Function".to_string(),
@@ -682,7 +707,7 @@ pub fn type_func_to_ast(span: Span, ty: &FunctionType) -> AstType {
     }
 }
 
-pub fn simple_user_type_to_ast(span: Span, ty: &Vec<SimpleUserType>) -> AstType {
+fn simple_user_type_to_ast(ctx: &mut Context, span: Span, ty: &Vec<SimpleUserType>) -> AstType {
     let last = ty.last().unwrap();
     let mut full_name = String::new();
     let mut type_parameters = vec![];
@@ -697,7 +722,7 @@ pub fn simple_user_type_to_ast(span: Span, ty: &Vec<SimpleUserType>) -> AstType 
     for x in &last.type_params {
         type_parameters.push(match x {
             CallSiteTypeParams::Projection => AstTypeParameter::Projection,
-            CallSiteTypeParams::Type(ty) => AstTypeParameter::Type(type_to_ast(ty)),
+            CallSiteTypeParams::Type(ty) => AstTypeParameter::Type(type_to_ast(ctx, ty)),
         });
     }
 
@@ -710,21 +735,21 @@ pub fn simple_user_type_to_ast(span: Span, ty: &Vec<SimpleUserType>) -> AstType 
     }
 }
 
-pub fn var_to_ast(mutable: bool, var: &VariableDeclarationEntry) -> AstVar {
+fn var_to_ast(ctx: &mut Context, mutable: bool, var: &VariableDeclarationEntry) -> AstVar {
     AstVar {
         name: var.name.to_owned(),
-        ty: var.declared_type.as_ref().map(type_to_ast),
+        ty: var.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
         mutable,
     }
 }
 
-fn block_to_ast(block: &Block) -> AstExpr {
+fn block_to_ast(ctx: &mut Context, block: &Block) -> AstExpr {
     let mut exprs = vec![];
 
     for statement in &block.1 {
         match statement {
             Statement::Expr(e) => {
-                exprs.push(expr_to_ast(e))
+                exprs.push(expr_to_ast(ctx, e))
             }
             Statement::Decl(_) => {}
         }
@@ -736,19 +761,19 @@ fn block_to_ast(block: &Block) -> AstExpr {
     }
 }
 
-fn expr_chain_to_tree(operands: &Vec<ExprVal>, operators: &Vec<String>) -> AstExpr {
+fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Vec<String>) -> AstExpr {
     debug_assert_eq!(operands.len(), operators.len() + 1);
 
     if operators.is_empty() {
-        expr_to_ast(operands.first().unwrap())
+        expr_to_ast(ctx, operands.first().unwrap())
     } else {
         let mut iter = operands.iter();
         let mut op_iter = operators.iter();
-        let mut tree = expr_to_ast(iter.next().unwrap());
+        let mut tree = expr_to_ast(ctx, iter.next().unwrap());
 
         while let Some(expr) = iter.next() {
             let op = op_iter.next().unwrap();
-            let next = expr_to_ast(expr);
+            let next = expr_to_ast(ctx, expr);
             let span = (get_span(&tree).0, (expr.0).1);
 
             tree = AstExpr::Call {
