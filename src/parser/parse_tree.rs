@@ -123,6 +123,7 @@ pub enum TopLevelObject {
 pub struct Property {
     pub span: Span,
     pub modifiers: Vec<Modifier>,
+    pub mutable: bool,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
     pub declarations: Vec<VariableDeclarationEntry>,
@@ -289,7 +290,7 @@ pub struct Function {
     pub type_parameters2: Vec<TypeParameter>,
     pub name: String,
     pub value_parameters: Vec<FunctionParameter>,
-    pub return_type: Type,
+    pub return_type: Option<Type>,
     pub type_constraints: Vec<TypeConstraint>,
     pub body: Option<FunctionBody>,
 }
@@ -396,9 +397,10 @@ pub struct SimpleUserType {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum CallSiteTypeParams {
-    Projection,
     // * -> List<*>
-    Type(Type), // Int -> List<Int>
+    Projection,
+    // Int -> List<Int>
+    Type(Type),
 }
 
 #[derive(Clone, PartialEq, Debug)]

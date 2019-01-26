@@ -1,23 +1,212 @@
 use std::rc::Rc;
 
-use crate::analyzer::ast::AstExpr;
-use crate::analyzer::ast::AstType;
-use crate::analyzer::ast::AstVar;
+use crate::analyzer::ast::*;
+use crate::analyzer::ast::AstProperty;
 use crate::create_vec;
 use crate::interpreter::bytecode::Constant;
 use crate::Number;
-use crate::parser::parse_tree::Block;
-use crate::parser::parse_tree::Expr;
-use crate::parser::parse_tree::ExprPostfix;
-use crate::parser::parse_tree::ExprRef;
-use crate::parser::parse_tree::ExprVal;
-use crate::parser::parse_tree::StringComponent;
-use crate::parser::parse_tree::Type;
-use crate::parser::parse_tree::VariableDeclarationEntry;
-use crate::parser::parse_tree::WhenCondition;
-use crate::parser::parse_tree::WhenEntry;
+use crate::parser::parse_tree::*;
 use crate::source_code::Span;
-use crate::parser::parse_tree::SimpleUserType;
+
+struct Context {
+    errors: Vec<String>,
+}
+
+pub fn file_to_ast(file: KotlinFile) -> AstFile {
+    let mut classes = vec![];
+    let mut functions = vec![];
+    let mut properties = vec![];
+
+    for tlo in &file.objects {
+        match tlo {
+            TopLevelObject::Class(class) => {
+                classes.push(class_to_ast(class));
+            }
+            TopLevelObject::Object(obj) => {
+                classes.push(object_to_ast(obj));
+            }
+            TopLevelObject::Function(fun) => {
+                functions.push(function_to_ast(fun));
+            }
+            TopLevelObject::Property(prop) => {
+                properties.push(property_to_ast(prop));
+            }
+            TopLevelObject::TypeAlias(_) => {
+                unimplemented!()
+            }
+        }
+    }
+
+    AstFile {
+        package: file.get_package_str(),
+        classes,
+        functions,
+        properties,
+    }
+}
+
+pub fn statement_to_ast(statement: &Statement) -> AstStatement {
+    match statement {
+        Statement::Expr(e) => AstStatement::Expr(expr_to_ast(e)),
+        Statement::Decl(decl) => {
+            match decl {
+                Declaration::Class(class) => {
+                    AstStatement::Class(class_to_ast(class))
+                }
+                Declaration::Object(obj) => {
+                    AstStatement::Class(object_to_ast(obj))
+                }
+                Declaration::Function(fun) => {
+                    AstStatement::Function(function_to_ast(fun))
+                }
+                Declaration::Property(prop) => {
+                    AstStatement::Property(property_to_local_ast(prop))
+                }
+                Declaration::TypeAlias(_) => {
+                    panic!("Not supported")
+                }
+            }
+        }
+    }
+}
+
+fn class_to_ast(class: &Class) -> AstClass {
+    let mut body = vec![];
+
+    if let Some(b) = &class.body {
+        for member in &b.members {
+            body.push(member_to_ast(member))
+        }
+    }
+
+    AstClass {
+        name: class.name.to_string(),
+        body,
+    }
+}
+
+fn object_to_ast(class: &Object) -> AstClass {
+    let mut body = vec![];
+
+    if let Some(b) = &class.body {
+        for member in &b.members {
+            body.push(member_to_ast(member))
+        }
+    }
+
+    AstClass {
+        name: class.name.to_string(),
+        body,
+    }
+}
+
+fn member_to_ast(member: &Member) -> AstMember {
+    match member {
+        Member::Object(obj) => AstMember::Class(object_to_ast(obj)),
+        Member::Function(fun) => AstMember::Function(function_to_ast(fun)),
+        Member::Property(prop) => AstMember::Property(property_to_ast(prop)),
+        Member::Class(class) => AstMember::Class(class_to_ast(class)),
+        Member::CompanionObject(_) => {
+            // Ignored
+            unimplemented!()
+        }
+        Member::TypeAlias(_) => {
+            panic!("Not supported")
+        }
+        Member::AnonymousInitializer(_) => {
+            // Ignored
+            unimplemented!()
+        }
+        Member::SecondaryConstructor(_) => {
+            // Ignored
+            unimplemented!()
+        }
+    }
+}
+
+
+fn property_to_ast(prop: &Property) -> AstProperty {
+    let (delegated, expr) = match &prop.initialization {
+        PropertyInitialization::None => (false, None),
+        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(expr))),
+        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(expr))),
+    };
+
+    let vars = if prop.declarations.len() == 1 {
+        let decl = prop.declarations.first().unwrap();
+        vec![AstVar {
+            name: decl.name.to_owned(),
+            ty: decl.declared_type.as_ref().map(type_to_ast),
+            mutable: prop.mutable,
+        }]
+    } else {
+        prop.declarations.iter()
+            .map(|decl| var_to_ast(prop.mutable, decl))
+            .collect()
+    };
+
+    AstProperty {
+        vars,
+        expr,
+        delegated,
+    }
+}
+
+
+fn function_to_ast(fun: &Function) -> AstFunction {
+    let body = fun.body.as_ref().map(|body| {
+        match body {
+            FunctionBody::Block(e) => block_to_ast(e),
+            FunctionBody::Expression(e) => expr_to_ast(e),
+        }
+    });
+
+    let mut args = vec![];
+    for param in &fun.value_parameters {
+        args.push(AstVar {
+            name: param.name.to_owned(),
+            ty: Some(type_to_ast(&param.ty)),
+            mutable: false,
+        })
+        // TODO this should be in the function's block code
+//        param.default_value
+    }
+
+    AstFunction {
+        extension: fun.receiver.is_some(),
+        name: fun.name.to_owned(),
+        args,
+        return_ty: fun.return_type.as_ref().map(type_to_ast),
+        body,
+    }
+}
+
+fn property_to_local_ast(prop: &Property) -> AstLocalProperty {
+    let (delegated, expr) = match &prop.initialization {
+        PropertyInitialization::None => (false, None),
+        PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(expr))),
+        PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(expr))),
+    };
+
+    let vars = if prop.declarations.len() == 1 {
+        let decl = prop.declarations.first().unwrap();
+        vec![AstVar {
+            name: decl.name.to_owned(),
+            ty: decl.declared_type.as_ref().map(type_to_ast),
+            mutable: prop.mutable,
+        }]
+    } else {
+        prop.declarations.iter()
+            .map(|decl| var_to_ast(prop.mutable, decl))
+            .collect()
+    };
+
+    AstLocalProperty {
+        vars,
+        expr,
+        delegated,
+    }
+}
 
 pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
     let span = expr.0;
@@ -97,7 +286,7 @@ pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
             }
         }
         Expr::For { variables, expr, body, .. } => {
-            let variables = variables.iter().map(var_to_ast).collect::<Vec<_>>();
+            let variables = variables.iter().map(|it| var_to_ast(false, it)).collect::<Vec<_>>();
             AstExpr::For {
                 span,
                 variables,
@@ -130,7 +319,7 @@ pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
                 .map(|b| (
                     AstVar {
                         name: b.name.to_owned(),
-                        ty: Some(simple_user_type_to_ast(&b.ty)),
+                        ty: Some(simple_user_type_to_ast(span, &b.ty)),
                         mutable: false,
                     },
                     block_to_ast(&b.block)
@@ -167,7 +356,9 @@ pub fn expr_to_ast(expr: &ExprVal) -> AstExpr {
         // TODO block creation
         Expr::Object { .. } => { unimplemented!() }
         Expr::CallableRef { .. } => { unimplemented!() }
-        Expr::Lambda(_) => { unimplemented!() }
+        Expr::Lambda(lit) => {
+            unimplemented!()
+        }
     }
 }
 
@@ -187,34 +378,37 @@ fn convert_postfix_to_expr(span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix
                     _ => panic!("Impossible state")
                 };
 
-                ast = AstExpr::Block(vec![
-                    AstExpr::WriteRef {
-                        span,
-                        name: variable.to_owned() + "_",
-                        expr: Rc::new(AstExpr::Ref {
+                ast = AstExpr::Block {
+                    span,
+                    exprs: vec![
+                        AstExpr::WriteRef {
+                            span,
+                            name: variable.to_owned() + "_",
+                            expr: Rc::new(AstExpr::Ref {
+                                span,
+                                name: variable.to_owned(),
+                            }),
+                        },
+                        AstExpr::WriteRef {
                             span,
                             name: variable.to_owned(),
-                        }),
-                    },
-                    AstExpr::WriteRef {
-                        span,
-                        name: variable.to_owned(),
-                        expr: Rc::new(AstExpr::Call {
+                            expr: Rc::new(AstExpr::Call {
+                                span,
+                                function: new_name.to_owned(),
+                                args: vec![
+                                    AstExpr::Ref {
+                                        span,
+                                        name: variable.to_owned(),
+                                    }
+                                ],
+                            }),
+                        },
+                        AstExpr::Ref {
                             span,
-                            function: new_name.to_owned(),
-                            args: vec![
-                                AstExpr::Ref {
-                                    span,
-                                    name: variable.to_owned(),
-                                }
-                            ],
-                        }),
-                    },
-                    AstExpr::Ref {
-                        span,
-                        name: variable.to_owned() + "_",
-                    }
-                ]);
+                            name: variable.to_owned() + "_",
+                        }
+                    ],
+                };
             }
             ExprPostfix::AssertNonNull => {
                 ast = AstExpr::Call {
@@ -461,19 +655,85 @@ fn convert_when_to_ifs(span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEnt
 }
 
 pub fn type_to_ast(ty: &Type) -> AstType {
-    unimplemented!()
+    match ty.reference.as_ref() {
+        TypeReference::Function(func) => type_func_to_ast(ty.span, func),
+        TypeReference::UserType(user) => simple_user_type_to_ast(ty.span, user),
+        TypeReference::Nullable(reference) => {
+            let mut ast = match reference.as_ref() {
+                TypeReference::Function(func) => type_func_to_ast(ty.span, func),
+                TypeReference::UserType(user) => simple_user_type_to_ast(ty.span, user),
+                TypeReference::Nullable(reference) => {
+                    panic!("Double nullable!")
+                }
+            };
+            ast.nullable = true;
+            ast
+        }
+    }
 }
 
-pub fn simple_user_type_to_ast(ty: &Vec<SimpleUserType>) -> AstType {
-    unimplemented!()
+pub fn type_func_to_ast(span: Span, ty: &FunctionType) -> AstType {
+    AstType {
+        span,
+        name: "Function".to_string(),
+        full_name: "kotlin.Function".to_string(),
+        type_parameters: vec![],
+        nullable: false,
+    }
 }
 
-pub fn var_to_ast(var: &VariableDeclarationEntry) -> AstVar {
-    unimplemented!()
+pub fn simple_user_type_to_ast(span: Span, ty: &Vec<SimpleUserType>) -> AstType {
+    let last = ty.last().unwrap();
+    let mut full_name = String::new();
+    let mut type_parameters = vec![];
+
+    for (i, x) in ty.iter().enumerate() {
+        full_name.push_str(&x.name);
+        if ty.len() != i + 1 {
+            full_name.push('.');
+        }
+    }
+
+    for x in &last.type_params {
+        type_parameters.push(match x {
+            CallSiteTypeParams::Projection => AstTypeParameter::Projection,
+            CallSiteTypeParams::Type(ty) => AstTypeParameter::Type(type_to_ast(ty)),
+        });
+    }
+
+    AstType {
+        span,
+        name: last.name.to_owned(),
+        full_name: "kotlin.Function".to_string(),
+        type_parameters,
+        nullable: false,
+    }
 }
 
-fn block_to_ast(expr: &Block) -> AstExpr {
-    unimplemented!()
+pub fn var_to_ast(mutable: bool, var: &VariableDeclarationEntry) -> AstVar {
+    AstVar {
+        name: var.name.to_owned(),
+        ty: var.declared_type.as_ref().map(type_to_ast),
+        mutable,
+    }
+}
+
+fn block_to_ast(block: &Block) -> AstExpr {
+    let mut exprs = vec![];
+
+    for statement in &block.1 {
+        match statement {
+            Statement::Expr(e) => {
+                exprs.push(expr_to_ast(e))
+            }
+            Statement::Decl(_) => {}
+        }
+    }
+
+    AstExpr::Block {
+        span: block.0,
+        exprs,
+    }
 }
 
 fn expr_chain_to_tree(operands: &Vec<ExprVal>, operators: &Vec<String>) -> AstExpr {
@@ -504,12 +764,7 @@ fn expr_chain_to_tree(operands: &Vec<ExprVal>, operators: &Vec<String>) -> AstEx
 
 fn get_span(expr: &AstExpr) -> Span {
     match expr {
-        AstExpr::Block(list) => {
-            (
-                get_span(list.first().unwrap()).0,
-                get_span(list.last().unwrap()).1,
-            )
-        }
+        AstExpr::Block { span, .. } => *span,
         AstExpr::Constant { span, .. } => *span,
         AstExpr::Ref { span, .. } => *span,
         AstExpr::Call { span, .. } => *span,

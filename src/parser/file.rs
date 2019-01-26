@@ -152,6 +152,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
 
     Ok(Property {
         span: (start, s.end()),
+        mutable,
         modifiers,
         type_parameters,
         receiver,
@@ -988,15 +989,9 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     let value_parameters = read_value_parameters(s)?;
 
     let return_type = if s.optional_expect(Token::Colon) {
-        read_type(s)?
+        Some(read_type(s)?)
     } else {
-        Type {
-            span: SPAN_NONE,
-            annotations: vec![],
-            reference: Arc::new(TypeReference::UserType(vec![
-                SimpleUserType { name: String::from("Unit"), type_params: vec![] }
-            ])),
-        }
+        None
     };
 
     let type_constraints = read_type_constraints(s)?;

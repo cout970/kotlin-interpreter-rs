@@ -181,7 +181,7 @@ fn get_function_references(refs: &mut RefVec, fun: &Function) {
     }
 
     // Return
-    get_type_references(refs, &fun.return_type);
+//    get_type_references(refs, &fun.return_type);
 
     // Parameters
     for x in &fun.value_parameters {
