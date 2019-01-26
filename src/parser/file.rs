@@ -163,6 +163,51 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
     })
 }
 
+fn read_local_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Property, KtError> {
+//    : modifiers ("val" | "var")
+//        typeParameters?
+//        (multipleVariableDeclarations | variableDeclarationEntry)
+//        ("by" | "=" expression SEMI?)?
+//    ;
+
+    let start = s.start();
+    let mutable = s.optional_expect(Token::Var);
+    if !mutable { s.expect(Token::Val)?; }
+
+    let type_parameters = read_type_parameters(s)?;
+
+    let declarations = if let Token::LeftParen = s.read_token(0) {
+        read_multiple_variable_declarations(s)?
+    } else {
+        vec![read_variable_declaration(s)?]
+    };
+
+    let mut initialization = PropertyInitialization::None;
+
+    if s.optional_expect_keyword("by") {
+        let e = read_expresion(s)?;
+        s.semi();
+        initialization = PropertyInitialization::Delegation(e);
+    } else if s.optional_expect(Token::Equals) {
+        let e = read_expresion(s)?;
+        s.semi();
+        initialization = PropertyInitialization::Expr(e);
+    }
+
+    Ok(Property {
+        span: (start, s.end()),
+        mutable,
+        modifiers,
+        type_parameters,
+        receiver: None,
+        declarations,
+        type_constraints: vec![],
+        initialization,
+        getter: None,
+        setter: None,
+    })
+}
+
 fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Option<PropertySetter>), KtError> {
     let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
     let mut getter: Option<PropertyGetter> = None;
@@ -1361,7 +1406,7 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
 fn read_declaration(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Declaration, KtError> {
     let res = match s.read_token(0) {
         Token::Fun => Declaration::Function(read_function(s, modifiers)?),
-        Token::Val | Token::Var => Declaration::Property(read_property(s, modifiers)?),
+        Token::Val | Token::Var => Declaration::Property(read_local_property(s, modifiers)?),
         Token::Class | Token::Interface => Declaration::Class(read_class(s, modifiers)?),
         Token::TypeAlias => Declaration::TypeAlias(read_typealias(s, modifiers)?),
         Token::Object => Declaration::Object(read_object(s, modifiers)?),

@@ -107,9 +107,9 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                 }
                 Declaration::TypeAlias(ta) => {
                     ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
-                    AstStatement::Class(AstClass{
+                    AstStatement::Class(AstClass {
                         name: "_error_".to_string(),
-                        body: vec![]
+                        body: vec![],
                     })
                 }
             }
@@ -169,9 +169,9 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
         }
         Member::TypeAlias(ta) => {
             ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
-            AstMember::Class(AstClass{
+            AstMember::Class(AstClass {
                 name: "_error_".to_string(),
-                body: vec![]
+                body: vec![],
             })
         }
         Member::AnonymousInitializer(_) => {
@@ -225,8 +225,22 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     });
     ctx.modifier_ctx.pop().unwrap();
 
+
     let mut args = vec![];
+
+    if let Some(rec) = &fun.receiver {
+        args.push(AstVar {
+            name: "receiver".to_owned(),
+            ty: Some(type_to_ast(ctx, rec)),
+            mutable: false,
+        });
+    }
+
     for param in &fun.value_parameters {
+        if param.mutability != ParameterMutability::Default {
+            ctx.new_error(fun.span, AnalyserError::FunctionParameterInvalidMutability)
+        }
+
         args.push(AstVar {
             name: param.name.to_owned(),
             ty: Some(type_to_ast(ctx, &param.ty)),
@@ -236,11 +250,75 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 //        param.default_value
     }
 
+    let return_ty = fun.return_type.as_ref()
+        .map(|it| type_to_ast(ctx, it));
+
+    let mut operator = false;
+
+    if fun.modifiers.contains(&Modifier::Operator) {
+        operator = true;
+        match fun.name.as_str() {
+            "inc" | "dec" => {
+                if args.len() != 1 {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorArguments);
+                }
+                if return_ty.is_none() {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorReturn);
+                }
+            }
+            "plus" | "minus" | "times" | "div" | "rem" | "mod" | "rangeTo" | "contains" | "compareTo" => {
+                if args.len() != 2 {
+                    dbg!(args.len());
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorArguments);
+                }
+                if return_ty.is_none() {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorReturn);
+                }
+            }
+            "get" => {
+                if args.is_empty() {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorArguments);
+                }
+                if return_ty.is_none() {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorReturn);
+                }
+            }
+            "set" => {
+                if args.len() < 2 {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorArguments);
+                }
+            }
+            "invoke" => {
+                // Anything is valid
+            }
+            "plusAssign" | "minusAssign" | "timesAssign" | "divAssign" | "remAssign" | "modAssign" => {
+                if args.len() != 2 {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorArguments);
+                }
+                if return_ty.is_none() {
+                    ctx.new_error(fun.span, AnalyserError::InvalidOperatorReturn);
+                } else if let Some(ret) = &return_ty {
+                    if ret.name != "Unit" {
+                        ctx.new_error(fun.span, AnalyserError::InvalidOperatorReturn);
+                    }
+                }
+            }
+            "provideDelegate" | "getValue" | "setValue" => {
+                // TODO this requires more type checking
+            }
+            _ => {
+                operator = false;
+                ctx.new_error(fun.span, AnalyserError::InvalidOperatorFunctionName);
+            }
+        }
+    }
+
     AstFunction {
         extension: fun.receiver.is_some(),
+        operator,
         name: fun.name.to_owned(),
         args,
-        return_ty: fun.return_type.as_ref().map(|it| type_to_ast(ctx, it)),
+        return_ty,
         body,
     }
 }
@@ -754,12 +832,12 @@ fn type_reference_to_ast(ctx: &mut Context, span: Span, ty: &TypeReference) -> A
                 TypeReference::UserType(user) => simple_user_type_to_ast(ctx, span, user),
                 TypeReference::Nullable(_) => {
                     ctx.new_error(span, AnalyserError::DoubleNullableType);
-                    AstType{
+                    AstType {
                         span,
                         name: "_error_".to_string(),
                         full_name: "_error_".to_string(),
                         type_parameters: vec![],
-                        nullable: false
+                        nullable: false,
                     }
                 }
             };

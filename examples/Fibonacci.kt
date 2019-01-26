@@ -1,5 +1,7 @@
 @file:Suppress("unused")
 
+import kotlin.reflect.KProperty
+
 external fun println(x: Any)
 external fun <T> listOf(vararg value: T): List<T>
 
@@ -17,7 +19,7 @@ fun test() {
     val a: Int by 0
 
     when {
-        1 > 2 || 3 > 4 -> {
+        3 > a -> {
 
         }
     }
@@ -27,7 +29,7 @@ fun test() {
     0.test()
 }
 
-operator fun Int.getValue(a: Nothing?, prop: kotlin.reflect.KProperty<*>): Int {
+operator fun Int.getValue(a: Int?, prop: kotlin.reflect.KProperty<*>): Int {
     return 0
 }
 
@@ -58,7 +60,6 @@ val <T> List<T>.first: T get() = this[0]
 lateinit var a: List<Int>
 
 
-
 // var a = 0
 // 	private in set
 
@@ -72,8 +73,9 @@ fun finally(a: () -> String): String? {
 
 class Test constructor() {
 
-    fun test(){
+    fun test() {
         lateinit var myString: String
+
         data class Testing(val i: Int)
         myString = ""
     }
@@ -88,7 +90,7 @@ enum class Color {
 fun main() {
     Test().test()
     println("Hello, world!!!")
-    finally{
+    finally {
         """Custom SQL:
         listOf(1,2,3,4)
         mapOf(a to 1, b to 2, c to 3)
@@ -109,8 +111,8 @@ fun main() {
     val a = 5
 
 
-    1 in listOf(1,2,3)
-    when ('b'){
+    1 in listOf(1, 2, 3)
+    when ('b') {
         'a' -> 1
         'b' -> if (5 > 3) {
             println("Here 1")
@@ -120,14 +122,14 @@ fun main() {
 
 }
 
-abstract class MyClass(val func: ()->Unit){
-    open fun say(){
+abstract class MyClass(val func: () -> Unit) {
+    open fun say() {
 
     }
 }
 
-open class Testing(func: ()->Unit) : MyClass(func){
-    override fun say(){
+open class Testing(func: () -> Unit) : MyClass(func) {
+    override fun say() {
 
     }
 }
@@ -135,7 +137,7 @@ open class Testing(func: ()->Unit) : MyClass(func){
 // class MyList<T> : ArrayList<T> { 1 + 2 }
 // class MyList<T> : ArrayList<T> { 1 + 2 } { val age = 5 }
 
-object TestinObj : Testing({}){
+object TestinObj : Testing({}) {
     init {
 
     }

@@ -518,6 +518,9 @@ pub struct FunctionLiteral {
 
 impl KotlinFile {
     pub fn get_package_str(&self) -> String {
-        self.preamble.package_header.as_ref().unwrap().path.join(".")
+        match self.preamble.package_header.as_ref() {
+            Some(it) => it.path.join("."),
+            None => String::new()
+        }
     }
 }

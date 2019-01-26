@@ -2,53 +2,50 @@ use crate::errors::KtError;
 use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::tokenizer::Tokenizer;
+use crate::analyzer::tree_to_ast::file_to_ast;
 
-pub fn assert_fails(code: &str) -> Vec<KtError> {
+pub fn assert_fails(code: &str) {
     let code = from_str(code);
 
     let ref mut tokenizer = Tokenizer::new(code.clone());
     let tokens = tokenizer.read_tokens().unwrap();
 
     let mut parser = Parser::new(code.clone(), tokens);
-    let ast = match parser.parse_file() {
+    let file = match parser.parse_file() {
         Ok(it) => it,
         Err(it) => {
-            println!("ParsingError\n");
-            return vec![it];
+            println!("ParsingError: {}\n", it);
+            return
         }
     };
 
-//    println!("Ast: {:?}\n\n", ast);
-//
-//    let ctx = Checker::new(code.clone(), ast);
-//
-//    let errors = ctx.get_errors();
-//    assert!(errors.len() > 0);
-//    errors
+    let (ast, errors) = file_to_ast(code, &file);
+    dbg!(ast);
+    println!("\n\n");
 
-    vec![]
+    for x in &errors {
+        println!("{:?}", x);
+    }
+
+    assert_ne!(errors.len(), 0);
 }
 
-pub fn assert_success(code: &str) -> Vec<String> {
+pub fn assert_success(code: &str){
     let code = from_str(code);
 
     let ref mut tokenizer = Tokenizer::new(code.clone());
     let tokens = tokenizer.read_tokens().unwrap();
 
     let mut parser = Parser::new(code.clone(), tokens);
-    let ast = parser.parse_file().unwrap();
+    let file = parser.parse_file().unwrap();
 
-//    println!("Ast: {:?}\n\n", ast);
+    let (ast, errors) = file_to_ast(code, &file);
+    dbg!(ast);
+    println!("\n\n");
 
-//    let ctx = Checker::new(code.clone(), ast);
-//
-//    let errors = ctx.get_errors();
-//    for x in &errors {
-//        println!("{:?}", x);
-//    }
-//
-//    assert_eq!(errors.len(), 0);
-//
-//    ctx.get_symbols()
-    vec![]
+    for x in &errors {
+        println!("{:?}", x);
+    }
+
+    assert_eq!(errors.len(), 0);
 }

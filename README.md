@@ -21,3 +21,16 @@ If you really want to get runtime efficiency use the standart compiler for JVM o
 At some point I want to be able to use this project to make custom scripts for the Amethyst game engine. 
 If we combine the eficiency and safety of Rust with the flexibily and conciseness of Kotlin we get a great 
 union that allows to do quick development while maintaining great performance.
+
+
+### Manual code check
+- [x] Use of val/var in function parameters 
+- [x] Valid function name and type for modifier 'operator'
+- [ ] Valid modifiers in context
+- [x] Modifiers not duplicated
+- [x] Modifiers not incompatible to each other
+- [ ] Supertype is not final
+- [ ] Abstract methods are override in subclass
+- [ ] Type name is valid
+- [ ] Function call has valid parameters
+- [ ] A bunch more...

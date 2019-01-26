@@ -38,6 +38,7 @@ pub enum AnalyserError {
     InvalidModifierUsage { modifier: Modifier, context: String },
     DuplicatedModifier { modifier: Modifier },
     MutuallyExclusiveModifier { modifier_1: Modifier, modifier_2: Modifier },
+    InvalidModifier { modifier: Modifier, context: ModifierCtx },
     ConflictingImport { name: String },
     MultipleInheritance,
     ExtendingNonClass,
@@ -50,6 +51,10 @@ pub enum AnalyserError {
     NestedTypeAlias,
     DoubleNullableType,
     IncDecToNonVariable,
+    InvalidOperatorArguments,
+    InvalidOperatorReturn,
+    InvalidOperatorFunctionName,
+    FunctionParameterInvalidMutability,
     DestructuringInTopLevel,
 }
 

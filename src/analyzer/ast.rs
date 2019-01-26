@@ -55,6 +55,7 @@ pub struct AstProperty {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFunction {
     pub extension: bool,
+    pub operator: bool,
     pub name: String,
     pub args: Vec<AstVar>,
     pub return_ty: Option<AstType>,

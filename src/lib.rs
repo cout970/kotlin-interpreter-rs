@@ -97,7 +97,7 @@ mod tests {
     use crate::analyzer::tree_to_ast::file_to_ast;
 
     #[test]
-//    #[ignore]
+    #[ignore]
     fn get_code() {
         let ref mut codes: Vec<(String, SourceCode)> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);

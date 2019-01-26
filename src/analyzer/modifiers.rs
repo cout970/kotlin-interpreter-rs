@@ -7,10 +7,32 @@ use crate::parser::parse_tree::ModifierCtx;
 
 type Result = Vec<AnalyserError>;
 
-pub fn check_modifiers(mods: &Vec<Modifier>, _modifier_ctx: ModifierCtx) -> Vec<AnalyserError> {
+pub fn check_modifiers(mods: &Vec<Modifier>, modifier_ctx: ModifierCtx) -> Vec<AnalyserError> {
     let mut ctx = vec![];
     report_duplicated_modifiers(&mut ctx, mods);
     report_mutually_exclusive_modifiers(&mut ctx, mods);
+//
+//    let valid_values: Vec<Modifier> = match modifier_ctx {
+//        ModifierCtx::TopLevelObject => vec![],
+//        ModifierCtx::TypeParameter => vec![],
+//        ModifierCtx::Statement => vec![],
+//        ModifierCtx::Package => vec![],
+//        ModifierCtx::Constructor => vec![],
+//        ModifierCtx::GetterSetter => vec![],
+//        ModifierCtx::ClassMember => vec![],
+//        ModifierCtx::EnumEntry => vec![],
+//        ModifierCtx::FunctionParameter => vec![],
+//    };
+//
+//    for m in mods {
+//        if !valid_values.contains(m) {
+//            ctx.push(AnalyserError::InvalidModifier {
+//                modifier: *m,
+//                context: *modifier_ctx,
+//            });
+//        }
+//    }
+
     ctx
 }
 
