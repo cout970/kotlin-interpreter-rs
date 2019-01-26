@@ -3,6 +3,7 @@
 // cargo watch -c -q -x test
 // cargo watch -c -q -s 'cargo rustc -- -Awarnings -Zno-codegen && cargo test'
 #![allow(dead_code)]
+// Note: https://stackoverflow.com/questions/32895522/disable-copying-entire-line-when-nothing-is-selected-in-intellij
 // }
 
 use std::fs;

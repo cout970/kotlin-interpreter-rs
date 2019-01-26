@@ -1504,7 +1504,7 @@ fn read_primary_constructor(s: &mut TokenCursor) -> Result<PrimaryConstructor, K
 
     let modifiers = s.optional_vec(&primary_constructor_start);
     s.expect(Token::LeftParen)?;
-    let params = s.optional_separated_by(Token::Comma, &read_function_parameter)?;
+    let params = s.optional_separated_by(Token::Comma, &read_constructor_parameter)?;
     s.expect(Token::RightParen)?;
 
     Ok(PrimaryConstructor {
@@ -1930,6 +1930,22 @@ fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtE
     let modifiers = read_modifiers(s, ModifierCtx::FunctionParameter)?;
     let mut mutability = ParameterMutability::Default;
 
+    let name = s.expect_id()?;
+    s.expect(Token::Colon)?;
+    let ty = read_type(s)?;
+    let mut default_value = None;
+
+    if s.optional_expect(Token::Equals) {
+        default_value = Some(read_expresion(s)?);
+    }
+
+    Ok(FunctionParameter { modifiers, mutability, name, ty, default_value })
+}
+
+fn read_constructor_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtError> {
+    let modifiers = read_modifiers(s, ModifierCtx::ConstructorParameter)?;
+    let mut mutability = ParameterMutability::Default;
+
     if s.optional_expect(Token::Val) {
         mutability = ParameterMutability::Val;
     } else if s.optional_expect(Token::Var) {
@@ -2033,21 +2049,12 @@ fn read_modifier(s: &mut TokenCursor, set: ModifierCtx) -> Result<Modifier, KtEr
     };
 
     let is_valid = match set {
-        ModifierCtx::TopLevelObject => {
-            match modifier {
-                Modifier::Abstract | Modifier::Final | Modifier::Enum | Modifier::Open |
-                Modifier::Annotation | Modifier::Sealed | Modifier::Data | Modifier::Lateinit |
-                Modifier::Private | Modifier::Protected | Modifier::Public | Modifier::Internal |
-                Modifier::Tailrec | Modifier::Operator | Modifier::Infix | Modifier::Inline |
-                Modifier::External | Modifier::Suspend | Modifier::Const | Modifier::Expect |
-                Modifier::Actual => true,
-                _ => false
-            }
-        }
+        ModifierCtx::TopLevelObject => true,
         ModifierCtx::TypeParameter => {
             modifier == Modifier::In || modifier == Modifier::Out || modifier == Modifier::Reified
         }
         ModifierCtx::Statement => {
+            // In, out are valid variable names so cannot be parsed as modifiers
             match modifier {
                 Modifier::Override | Modifier::Abstract | Modifier::Final | Modifier::Enum |
                 Modifier::Open | Modifier::Annotation | Modifier::Sealed | Modifier::Data |
@@ -2057,25 +2064,16 @@ fn read_modifier(s: &mut TokenCursor, set: ModifierCtx) -> Result<Modifier, KtEr
                 _ => false
             }
         }
-        ModifierCtx::Package | ModifierCtx::Constructor | ModifierCtx::GetterSetter => {
-            modifier == Modifier::Private || modifier == Modifier::Protected ||
+        ModifierCtx::Package | ModifierCtx::Constructor | ModifierCtx::GetterSetter => true,
+        ModifierCtx::ClassMember => true,
+        ModifierCtx::EnumEntry => modifier == Modifier::Inline,
+        ModifierCtx::FunctionParameter => {
+            modifier == Modifier::Noinline || modifier == Modifier::Crossinline ||
+                modifier == Modifier::Vararg ||
+                modifier == Modifier::Private || modifier == Modifier::Protected ||
                 modifier == Modifier::Public || modifier == Modifier::Internal
         }
-        ModifierCtx::ClassMember => {
-            match modifier {
-                Modifier::Abstract | Modifier::Final | Modifier::Enum | Modifier::Override |
-                Modifier::Open | Modifier::Annotation | Modifier::Sealed | Modifier::Data |
-                Modifier::Lateinit | Modifier::Private | Modifier::Protected | Modifier::Public |
-                Modifier::Internal | Modifier::Tailrec | Modifier::Operator | Modifier::Infix |
-                Modifier::Inline | Modifier::External | Modifier::Suspend | Modifier::Const |
-                Modifier::Expect | Modifier::Actual | Modifier::Inner => true,
-                _ => false
-            }
-        }
-        ModifierCtx::EnumEntry => {
-            modifier == Modifier::Inline
-        }
-        ModifierCtx::FunctionParameter => {
+        ModifierCtx::ConstructorParameter => {
             modifier == Modifier::Noinline || modifier == Modifier::Crossinline ||
                 modifier == Modifier::Vararg || modifier == Modifier::Override ||
                 modifier == Modifier::Private || modifier == Modifier::Protected ||

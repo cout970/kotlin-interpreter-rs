@@ -4,36 +4,105 @@ use std::collections::HashSet;
 use crate::errors::AnalyserError;
 use crate::parser::parse_tree::Modifier;
 use crate::parser::parse_tree::ModifierCtx;
+use crate::parser::parse_tree::ModifierTarget;
 
 type Result = Vec<AnalyserError>;
 
-pub fn check_modifiers(mods: &Vec<Modifier>, modifier_ctx: ModifierCtx) -> Vec<AnalyserError> {
-    let mut ctx = vec![];
-    report_duplicated_modifiers(&mut ctx, mods);
-    report_mutually_exclusive_modifiers(&mut ctx, mods);
-//
-//    let valid_values: Vec<Modifier> = match modifier_ctx {
-//        ModifierCtx::TopLevelObject => vec![],
-//        ModifierCtx::TypeParameter => vec![],
-//        ModifierCtx::Statement => vec![],
-//        ModifierCtx::Package => vec![],
-//        ModifierCtx::Constructor => vec![],
-//        ModifierCtx::GetterSetter => vec![],
-//        ModifierCtx::ClassMember => vec![],
-//        ModifierCtx::EnumEntry => vec![],
-//        ModifierCtx::FunctionParameter => vec![],
-//    };
-//
-//    for m in mods {
-//        if !valid_values.contains(m) {
-//            ctx.push(AnalyserError::InvalidModifier {
-//                modifier: *m,
-//                context: *modifier_ctx,
-//            });
-//        }
-//    }
+pub fn check_modifiers(mods: &Vec<Modifier>, context: ModifierCtx, target: ModifierTarget) -> Vec<AnalyserError> {
+    let mut errors = vec![];
+    report_duplicated_modifiers(&mut errors, mods);
+    report_mutually_exclusive_modifiers(&mut errors, mods);
 
-    ctx
+    for m in mods {
+        if !is_valid_modifier(*m, context, target) {
+            errors.push(AnalyserError::InvalidModifier {
+                modifier: *m,
+                context,
+            });
+        }
+    }
+
+    errors
+}
+
+fn is_valid_modifier(modifier: Modifier, context: ModifierCtx, target: ModifierTarget) -> bool {
+    match context {
+        ModifierCtx::TopLevelObject => {
+            match target {
+                ModifierTarget::Class => is_visibility_modifier(modifier) || is_class_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Object => is_visibility_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Function => is_visibility_modifier(modifier) || is_function_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Property => is_visibility_modifier(modifier) || is_property_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Other => is_visibility_modifier(modifier)
+            }
+        }
+        ModifierCtx::TypeParameter => {
+            modifier == Modifier::In || modifier == Modifier::Out || modifier == Modifier::Reified
+        }
+        ModifierCtx::Statement => {
+            match target {
+                ModifierTarget::Class => is_visibility_modifier(modifier) || is_class_modifier(modifier),
+                ModifierTarget::Object => is_visibility_modifier(modifier),
+                ModifierTarget::Function => is_visibility_modifier(modifier) || is_function_modifier(modifier),
+                ModifierTarget::Property => is_visibility_modifier(modifier) || is_property_modifier(modifier),
+                ModifierTarget::Other => is_visibility_modifier(modifier)
+            }
+        }
+        ModifierCtx::Package => false,
+        ModifierCtx::Constructor => is_visibility_modifier(modifier),
+        ModifierCtx::GetterSetter => is_visibility_modifier(modifier) || modifier == Modifier::Inline,
+        ModifierCtx::ClassMember => {
+            match target {
+                ModifierTarget::Class => is_visibility_modifier(modifier) || is_member_modifier(modifier) || is_class_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Object => is_visibility_modifier(modifier) || is_member_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Function => is_visibility_modifier(modifier) || is_member_modifier(modifier) || is_function_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Property => is_visibility_modifier(modifier) || is_member_modifier(modifier) || is_property_modifier(modifier) || is_multiplatform_modifier(modifier),
+                ModifierTarget::Other => is_visibility_modifier(modifier) || is_member_modifier(modifier)
+            }
+        }
+        ModifierCtx::EnumEntry => modifier == Modifier::Inline,
+        ModifierCtx::FunctionParameter => {
+            modifier == Modifier::Noinline || modifier == Modifier::Crossinline ||
+                modifier == Modifier::Vararg
+        }
+        ModifierCtx::ConstructorParameter => {
+            modifier == Modifier::Noinline || modifier == Modifier::Crossinline ||
+                modifier == Modifier::Vararg || modifier == Modifier::Override
+        }
+    }
+}
+
+fn is_member_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Override || modifier == Modifier::Open ||
+        modifier == Modifier::Final || modifier == Modifier::Abstract
+}
+
+fn is_visibility_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Public || modifier == Modifier::Private ||
+        modifier == Modifier::Protected || modifier == Modifier::Internal
+}
+
+fn is_property_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Lateinit || modifier == Modifier::Inline ||
+        modifier == Modifier::Const
+}
+
+fn is_function_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Tailrec || modifier == Modifier::Operator ||
+        modifier == Modifier::Infix || modifier == Modifier::Inline ||
+        modifier == Modifier::External || modifier == Modifier::Suspend
+}
+
+fn is_multiplatform_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Expect || modifier == Modifier::Actual
+}
+
+fn is_class_modifier(modifier: Modifier) -> bool {
+    modifier == Modifier::Final || modifier == Modifier::Abstract ||
+        modifier == Modifier::Enum || modifier == Modifier::Open ||
+        modifier == Modifier::Annotation || modifier == Modifier::Sealed ||
+        modifier == Modifier::Data || modifier == Modifier::Inline ||
+        modifier == Modifier::External
 }
 
 fn report_mutually_exclusive_modifiers(ctx: &mut Result, mods: &Vec<Modifier>) {

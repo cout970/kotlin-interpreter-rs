@@ -37,8 +37,8 @@ impl Context {
         }
     }
 
-    fn check_modifiers(&mut self, span: Span, modifiers: &Vec<Modifier>) {
-        self.add_errors(span, check_modifiers(modifiers, *self.modifier_ctx.last().unwrap()));
+    fn check_modifiers(&mut self, span: Span, modifiers: &Vec<Modifier>, target: ModifierTarget) {
+        self.add_errors(span, check_modifiers(modifiers, *self.modifier_ctx.last().unwrap(), target));
     }
 }
 
@@ -118,7 +118,7 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
 }
 
 fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
-    ctx.check_modifiers(class.span, &class.modifiers);
+    ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Class);
     let mut body = vec![];
 
     ctx.modifier_ctx.push(ModifierCtx::ClassMember);
@@ -138,7 +138,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
 }
 
 fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
-    ctx.check_modifiers(class.span, &class.modifiers);
+    ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Object);
     let mut body = vec![];
 
     ctx.modifier_ctx.push(ModifierCtx::ClassMember);
@@ -186,7 +186,7 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
 }
 
 fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
-    ctx.check_modifiers(prop.span, &prop.modifiers);
+    ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
@@ -214,7 +214,7 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
 }
 
 fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
-    ctx.check_modifiers(fun.span, &fun.modifiers);
+    ctx.check_modifiers(fun.span, &fun.modifiers, ModifierTarget::Function);
 
     ctx.modifier_ctx.push(ModifierCtx::Statement);
     let body = fun.body.as_ref().map(|body| {
@@ -324,7 +324,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 }
 
 fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
-    ctx.check_modifiers(prop.span, &prop.modifiers);
+    ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),

@@ -56,11 +56,6 @@ pub struct PackageHeader {
     pub path: Vec<String>,
 }
 
-//#[derive(Clone, PartialEq, Debug)]
-//pub struct Modifier {
-//    pub name: String,
-//}
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum ModifierCtx {
     TopLevelObject,
@@ -72,6 +67,16 @@ pub enum ModifierCtx {
     ClassMember,
     EnumEntry,
     FunctionParameter,
+    ConstructorParameter,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum ModifierTarget {
+    Class,
+    Object,
+    Function,
+    Property,
+    Other,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

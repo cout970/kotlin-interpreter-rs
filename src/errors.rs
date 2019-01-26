@@ -223,6 +223,7 @@ fn print_parser_error(f: &mut Write, code: &SourceCode, span: Span, error: &Pars
                 ModifierCtx::ClassMember => "class member",
                 ModifierCtx::EnumEntry => "enum entry",
                 ModifierCtx::FunctionParameter => "parameter",
+                ModifierCtx::ConstructorParameter => "constructor parameter",
             };
             write!(f, "Modifier '{:?}' is not applicable to '{}'\n", found, ctx_name)?;
         }

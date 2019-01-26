@@ -17,6 +17,9 @@ fun fibonacci(x: Int): Int = when (x) {
 
 fun test() {
     val a: Int by 0
+    var out = 0
+
+    out = 0
 
     when {
         3 > a -> {
@@ -28,6 +31,11 @@ fun test() {
 
     0.test()
 }
+
+var test: Int
+    inline get() = 5
+    internal inline set(it) {}
+
 
 operator fun Int.getValue(a: Int?, prop: kotlin.reflect.KProperty<*>): Int {
     return 0
