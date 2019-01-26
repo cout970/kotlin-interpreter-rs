@@ -29,7 +29,7 @@ pub struct CompiledBlock {
     pub instructions: Vec<Instruction>
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Constant {
     Null,
     Array(Vec<Constant>),

@@ -13,6 +13,13 @@ fun fibonacci(x: Int): Int = when (x) {
     else -> fibonacci(x - 1) + fibonacci(x - 2)
 }
 
+fun test(){
+    when {
+        else -> {}
+        true -> {}
+    }
+}
+
 
 class MyBox<T>(private val value: T?) {
 

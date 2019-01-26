@@ -3,16 +3,19 @@ use std::rc::Rc;
 use crate::interpreter::bytecode::Constant;
 use crate::source_code::Span;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstType {
     pub span: Span,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstVar {
     pub name: String,
     pub ty: Option<AstType>,
     pub mutable: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstExpr {
     Block(Vec<AstExpr>),
     Constant {
@@ -70,6 +73,12 @@ pub enum AstExpr {
     },
     Break {
         span: Span,
+    },
+    Try {
+        span: Span,
+        body: Rc<AstExpr>,
+        catch: Vec<(AstVar, AstExpr)>,
+        finally: Option<Rc<AstExpr>>,
     },
     Throw {
         span: Span,
