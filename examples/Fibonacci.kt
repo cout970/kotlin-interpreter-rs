@@ -16,6 +16,12 @@ fun fibonacci(x: Int): Int = when (x) {
 fun test() {
     val a: Int by 0
 
+    when {
+        1 > 2 || 3 > 4 -> {
+
+        }
+    }
+
     inline fun <reified T> T.test() = T::class
 
     0.test()

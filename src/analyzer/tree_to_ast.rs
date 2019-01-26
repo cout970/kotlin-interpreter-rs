@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::analyzer::ast::*;
 use crate::analyzer::ast::AstProperty;
+use crate::analyzer::modifiers::check_modifiers;
 use crate::create_vec;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
@@ -14,6 +15,7 @@ use crate::source_code::Span;
 struct Context {
     code: SourceCode,
     errors: Vec<KtError>,
+    modifier_ctx: Vec<ModifierCtx>,
 }
 
 impl Context {
@@ -22,19 +24,36 @@ impl Context {
             code: self.code.clone(),
             span,
             info,
-        })
+        });
+    }
+
+    fn add_errors(&mut self, span: Span, errors: Vec<AnalyserError>) {
+        for x in errors {
+            self.errors.push(KtError::Analyser {
+                code: self.code.clone(),
+                span,
+                info: x,
+            });
+        }
+    }
+
+    fn check_modifiers(&mut self, span: Span, modifiers: &Vec<Modifier>) {
+        self.add_errors(span, check_modifiers(modifiers, *self.modifier_ctx.last().unwrap()));
     }
 }
 
-fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
+pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
     let mut ctx = Context {
         code: code.clone(),
         errors: vec![],
+        modifier_ctx: vec![],
     };
 
     let mut classes = vec![];
     let mut functions = vec![];
     let mut properties = vec![];
+
+    ctx.modifier_ctx.push(ModifierCtx::TopLevelObject);
 
     for tlo in &file.objects {
         match tlo {
@@ -55,6 +74,8 @@ fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
             }
         }
     }
+
+    ctx.modifier_ctx.pop().unwrap();
 
     (
         AstFile {
@@ -84,8 +105,12 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                 Declaration::Property(prop) => {
                     AstStatement::Property(property_to_local_ast(ctx, prop))
                 }
-                Declaration::TypeAlias(_) => {
-                    panic!("Not supported")
+                Declaration::TypeAlias(ta) => {
+                    ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
+                    AstStatement::Class(AstClass{
+                        name: "_error_".to_string(),
+                        body: vec![]
+                    })
                 }
             }
         }
@@ -93,13 +118,18 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
 }
 
 fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
+    ctx.check_modifiers(class.span, &class.modifiers);
     let mut body = vec![];
+
+    ctx.modifier_ctx.push(ModifierCtx::ClassMember);
 
     if let Some(b) = &class.body {
         for member in &b.members {
             body.push(member_to_ast(ctx, member))
         }
     }
+
+    ctx.modifier_ctx.pop().unwrap();
 
     AstClass {
         name: class.name.to_string(),
@@ -108,13 +138,18 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
 }
 
 fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
+    ctx.check_modifiers(class.span, &class.modifiers);
     let mut body = vec![];
+
+    ctx.modifier_ctx.push(ModifierCtx::ClassMember);
 
     if let Some(b) = &class.body {
         for member in &b.members {
             body.push(member_to_ast(ctx, member))
         }
     }
+
+    ctx.modifier_ctx.pop().unwrap();
 
     AstClass {
         name: class.name.to_string(),
@@ -132,8 +167,12 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
             // Ignored
             unimplemented!()
         }
-        Member::TypeAlias(_) => {
-            panic!("Not supported")
+        Member::TypeAlias(ta) => {
+            ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
+            AstMember::Class(AstClass{
+                name: "_error_".to_string(),
+                body: vec![]
+            })
         }
         Member::AnonymousInitializer(_) => {
             // Ignored
@@ -146,8 +185,8 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
     }
 }
 
-
 fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
+    ctx.check_modifiers(prop.span, &prop.modifiers);
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
@@ -174,14 +213,17 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
     }
 }
 
-
 fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
+    ctx.check_modifiers(fun.span, &fun.modifiers);
+
+    ctx.modifier_ctx.push(ModifierCtx::Statement);
     let body = fun.body.as_ref().map(|body| {
         match body {
             FunctionBody::Block(e) => block_to_ast(ctx, e),
             FunctionBody::Expression(e) => expr_to_ast(ctx, e),
         }
     });
+    ctx.modifier_ctx.pop().unwrap();
 
     let mut args = vec![];
     for param in &fun.value_parameters {
@@ -189,7 +231,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
             name: param.name.to_owned(),
             ty: Some(type_to_ast(ctx, &param.ty)),
             mutable: false,
-        })
+        });
         // TODO this should be in the function's block code
 //        param.default_value
     }
@@ -204,6 +246,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 }
 
 fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
+    ctx.check_modifiers(prop.span, &prop.modifiers);
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
@@ -390,14 +433,17 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
         match post {
             ExprPostfix::Increment | ExprPostfix::Decrement => {
                 let variable = match &ast {
-                    AstExpr::Ref { name, .. } => name,
-                    _ => panic!("Unable to increment/decrement")
+                    AstExpr::Ref { name, .. } => name.as_str(),
+                    _ => {
+                        ctx.new_error(span, AnalyserError::IncDecToNonVariable);
+                        "_error_"
+                    }
                 };
 
                 let new_name = match post {
                     ExprPostfix::Increment => "inc",
                     ExprPostfix::Decrement => "dec",
-                    _ => panic!("Impossible state")
+                    _ => unreachable!()
                 };
 
                 ast = AstExpr::Block {
@@ -463,20 +509,27 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
 }
 
 fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, expr: &ExprRef) -> AstExpr {
-    assert_eq!(prefix.len(), 1);
+    if prefix.is_empty() {
+        return expr_to_ast(ctx, expr);
+    }
+
+    assert_eq!(prefix.len(), 1, "Only one prefix at the time is supported");
     let name = prefix.first().unwrap();
 
     match name.as_str() {
         "++" | "--" => {
             let variable = match &expr.1 {
-                Expr::Ref(var) => var,
-                _ => panic!("Unable to increment/decrement ")
+                Expr::Ref(var) => var.as_str(),
+                _ => {
+                    ctx.new_error(span, AnalyserError::IncDecToNonVariable);
+                    "_error_"
+                }
             };
 
             let new_name = match name.as_str() {
                 "++" => "inc",
                 "--" => "dec",
-                _ => panic!("Impossible state")
+                _ => unreachable!()
             };
 
             AstExpr::WriteRef {
@@ -499,7 +552,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
                 "-" => "unaryMinus",
                 "+" => "unaryPlus",
                 "!" => "not",
-                _ => panic!("Unexpected prefix: {}", name)
+                _ => unreachable!("Unexpected prefix: {}", name)
             };
 
             let e = expr_to_ast(ctx, expr);
@@ -562,9 +615,14 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
 }
 
 fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEntry>) -> AstExpr {
-    assert_ne!(entries.len(), 0);
     let mut pairs: Vec<(AstExpr, AstExpr)> = vec![];
     let mut else_value: Option<Rc<AstExpr>> = None;
+
+    if entries.is_empty() {
+        ctx.new_error(span, AnalyserError::WhenWithoutEntries);
+        return AstExpr::Constant { span, value: Constant::Null };
+    }
+
 
     if let Some(expr) = expr {
         // When with condition
@@ -572,7 +630,8 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
 
         // Extract pairs and else
         for (pos, entry) in entries.iter().enumerate() {
-            assert_eq!(entry.conditions.len(), 1);
+            // TODO remove this
+            assert_eq!(entry.conditions.len(), 1, "This should be removed");
             let cond = entry.conditions.first().unwrap();
 
             // validation multiple else
@@ -581,7 +640,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
             match cond {
                 WhenCondition::Else => {
                     if pos != entries.len() - 1 {
-                        panic!("Else must be the last entry");
+                        ctx.new_error(span, AnalyserError::WhenElseMustBeLast);
                     }
                     else_value = Some(Rc::new(block_to_ast(ctx, &entry.body)))
                 }
@@ -632,7 +691,9 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
 
         // Extract pairs and else
         for (pos, entry) in entries.iter().enumerate() {
-            assert_eq!(entry.conditions.len(), 1);
+            if entry.conditions.len() > 1 {
+                ctx.new_error(span, AnalyserError::WhenWithoutArgumentMultipleConditions);
+            }
             let cond = entry.conditions.first().unwrap();
 
             // validation multiple else
@@ -641,7 +702,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
             match cond {
                 WhenCondition::Else => {
                     if pos != entries.len() - 1 {
-                        panic!("Else must be the last entry");
+                        ctx.new_error(span, AnalyserError::WhenElseMustBeLast);
                     }
                     else_value = Some(Rc::new(block_to_ast(ctx, &entry.body)))
                 }
@@ -649,10 +710,10 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     pairs.push((expr_to_ast(ctx, cond), block_to_ast(ctx, &entry.body)));
                 }
                 WhenCondition::In { .. } => {
-                    panic!("Invalid condition");
+                    ctx.new_error(span, AnalyserError::InvalidWhenCondition);
                 }
                 WhenCondition::Is { .. } => {
-                    panic!("Invalid condition");
+                    ctx.new_error(span, AnalyserError::InvalidWhenCondition);
                 }
             }
         }
@@ -692,7 +753,14 @@ fn type_reference_to_ast(ctx: &mut Context, span: Span, ty: &TypeReference) -> A
                 TypeReference::Function(func) => type_func_to_ast(ctx, span, func),
                 TypeReference::UserType(user) => simple_user_type_to_ast(ctx, span, user),
                 TypeReference::Nullable(_) => {
-                    panic!("Double nullable!")
+                    ctx.new_error(span, AnalyserError::DoubleNullableType);
+                    AstType{
+                        span,
+                        name: "_error_".to_string(),
+                        full_name: "_error_".to_string(),
+                        type_parameters: vec![],
+                        nullable: false
+                    }
                 }
             };
             ast.nullable = true;

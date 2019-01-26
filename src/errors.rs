@@ -43,6 +43,13 @@ pub enum AnalyserError {
     ExtendingNonClass,
     ExtendingFinalClass,
     MissingConstructorCall,
+    WhenWithoutEntries,
+    WhenElseMustBeLast,
+    WhenWithoutArgumentMultipleConditions,
+    InvalidWhenCondition,
+    NestedTypeAlias,
+    DoubleNullableType,
+    IncDecToNonVariable,
     DestructuringInTopLevel,
 }
 

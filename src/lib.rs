@@ -90,14 +90,14 @@ fn map<A, B, F: Fn(A) -> B>(src: Vec<A>, func: F) -> Vec<B> {
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use crate::analyzer::semantic_rules::Checker;
     use crate::parser::Parser;
     use crate::tokenizer::Tokenizer;
 
     use super::*;
+    use crate::analyzer::tree_to_ast::file_to_ast;
 
     #[test]
-    #[ignore]
+//    #[ignore]
     fn get_code() {
         let ref mut codes: Vec<(String, SourceCode)> = vec![];
         get_all_source_files("/Data/Dev/Kotlin/Modeler/src/".as_ref(), codes);
@@ -105,17 +105,17 @@ mod tests {
 
         let mut index = 1;
         for (path, code) in codes {
-            println!("{}", index);
+            println!("{}: {}", index, path);
             let ref mut s = Tokenizer::new(code.clone());
             let tks = s.read_tokens().expect(&format!("Tokenizer error at {}", path));
 
             let mut parser = Parser::new(code.clone(), tks);
-            let ast = parser.parse_file().expect(&format!("Parsing error at {}", path));
+            let file = parser.parse_file().expect(&format!("Parsing error at {}", path));
 
-            let checker = Checker::new(code.clone(), &ast);
+            let (ast, errors) = file_to_ast(code.clone(), &file);
 
-            for errors in checker.get_errors() {
-                println!("{}", errors);
+            for x in errors {
+                dbg!(x);
             }
 
             index += 1;

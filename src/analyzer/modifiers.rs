@@ -1,27 +1,29 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::analyzer::semantic_rules::Checker;
 use crate::errors::AnalyserError;
 use crate::parser::parse_tree::Modifier;
 use crate::parser::parse_tree::ModifierCtx;
 
+type Result = Vec<AnalyserError>;
 
-pub fn check_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>, _modifier_ctx: ModifierCtx) {
-    report_duplicated_modifiers(ctx, mods);
-    report_mutually_exclusive_modifiers(ctx, mods);
+pub fn check_modifiers(mods: &Vec<Modifier>, _modifier_ctx: ModifierCtx) -> Vec<AnalyserError> {
+    let mut ctx = vec![];
+    report_duplicated_modifiers(&mut ctx, mods);
+    report_mutually_exclusive_modifiers(&mut ctx, mods);
+    ctx
 }
 
-fn report_mutually_exclusive_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
+fn report_mutually_exclusive_modifiers(ctx: &mut Result, mods: &Vec<Modifier>) {
     let mut forbidden: HashMap<Modifier, Modifier> = HashMap::new();
     // key = forbidden modifier, value = cause
 
     for m in mods {
         if let Some(other) = forbidden.get(m) {
-            ctx.errors.push(((0, 0), AnalyserError::MutuallyExclusiveModifier {
+            ctx.push(AnalyserError::MutuallyExclusiveModifier {
                 modifier_1: *m,
                 modifier_2: *other,
-            }));
+            });
         }
 
         match m {
@@ -127,14 +129,14 @@ fn report_mutually_exclusive_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) 
     }
 }
 
-fn report_duplicated_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>) {
+fn report_duplicated_modifiers(ctx: &mut Result, mods: &Vec<Modifier>) {
     let mut names: HashSet<Modifier> = HashSet::new();
 
     for x in mods {
         if names.contains(x) {
-            ctx.errors.push(((0, 0), AnalyserError::DuplicatedModifier {
+            ctx.push(AnalyserError::DuplicatedModifier {
                 modifier: *x,
-            }));
+            });
         }
         names.insert(*x);
     }

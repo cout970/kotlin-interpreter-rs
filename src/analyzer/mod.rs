@@ -1,11 +1,11 @@
-pub mod semantic_rules;
+//pub mod semantic_rules;
 pub mod typechecker;
 pub mod ast;
 pub mod tree_to_ast;
+mod modifiers;
 
 #[cfg(test)]
 mod tests {
-    use crate::analyzer::semantic_rules::Checker;
     use crate::analyzer::typechecker::TypeChecker;
     use crate::parser::parse_tree::KotlinFile;
     use crate::parser::Parser;
@@ -19,10 +19,6 @@ mod tests {
 
         let mut parser = Parser::new(code.clone(), tks);
         let ast = parser.parse_file().expect(&format!("Parsing error"));
-
-        let checker = Checker::new(code.clone(), &ast);
-
-        dbg!(checker.get_errors());
 
         ast
     }
