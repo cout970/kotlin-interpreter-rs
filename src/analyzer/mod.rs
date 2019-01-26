@@ -1,7 +1,7 @@
 pub mod semantic_rules;
 pub mod typechecker;
 pub mod ast;
-pub mod expr_to_ast;
+pub mod tree_to_ast;
 
 #[cfg(test)]
 mod tests {
