@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::collections::HashMap;
 
 use crate::analyzer::typechecker::compiler::compile_file;
@@ -8,6 +10,7 @@ use crate::source_code::SourceCode;
 mod type_reference_getter;
 mod type_info_collector;
 mod compiler;
+
 
 pub struct TypeChecker {
     code: SourceCode,
@@ -99,7 +102,7 @@ impl TypeInfo {
 
 impl TypeChecker {
     pub fn run(code: SourceCode, ast: &KotlinFile) {
-        let mut checker = TypeChecker {
+        let checker = TypeChecker {
             types: HashMap::new(),
             code
         };

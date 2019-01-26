@@ -179,6 +179,7 @@ fn print_interpreter_error(f: &mut Write, code: &SourceCode, span: Span, error: 
         _ => {}
     }
 
+    write!(f, "{}", print_code_location(&to_str(code), span))?;
     Ok(())
 }
 

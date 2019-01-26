@@ -7,7 +7,7 @@ use crate::parser::parse_tree::Modifier;
 use crate::parser::parse_tree::ModifierCtx;
 
 
-pub fn check_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>, modifier_ctx: ModifierCtx) {
+pub fn check_modifiers(ctx: &mut Checker, mods: &Vec<Modifier>, _modifier_ctx: ModifierCtx) {
     report_duplicated_modifiers(ctx, mods);
     report_mutually_exclusive_modifiers(ctx, mods);
 }

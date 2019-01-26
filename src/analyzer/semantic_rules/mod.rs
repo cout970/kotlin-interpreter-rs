@@ -114,7 +114,7 @@ fn check_class(ctx: &mut Checker, class: &Class, path: Path) {
     // check modifiers are applicable to the correct class type: 'enum interface'
 
     // Duplicated type parameters
-    let types_parameters = &class.type_parameters;
+//    let types_parameters = &class.type_parameters;
     // duplicated delegation specifier
     // missing enum body, for enum classes
 
@@ -281,7 +281,6 @@ mod tests {
     use crate::test_utils::assert_fails;
     use crate::test_utils::assert_success;
 
-    use super::*;
 
     #[test]
     fn test_preamble() {

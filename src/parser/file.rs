@@ -6,7 +6,6 @@ use crate::errors::ParserError;
 use crate::map;
 use crate::parser::parse_tree::*;
 use crate::parser::token_cursor::TokenCursor;
-use crate::source_code::Span;
 use crate::tokenizer::token::Token;
 
 macro_rules! create_operator_fun {
@@ -568,7 +567,7 @@ fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
             s.next();
             // Ignore 'this' label
             if s.optional_expect(Token::At) {
-                s.expect_id();
+                s.expect_id()?;
             }
             vec![SimpleUserType { name: String::from("this"), type_params: vec![] }]
         }
@@ -628,7 +627,7 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
             s.next();
             // Ignore 'this' label
             if s.optional_expect(Token::At) {
-                s.expect_id();
+                s.expect_id()?;
             }
             Ok(((start, s.end()), Expr::This))
         }
@@ -1523,7 +1522,7 @@ fn read_delegation_specifier(s: &mut TokenCursor) -> Result<DelegationSpecifier,
         let save = s.save();
         match read_call_suffix_without_lambda(s) {
             Ok(suffix) => Ok(DelegationSpecifier::FunctionCall(ty, suffix)),
-            Err(e) => {
+            Err(_) => {
                 s.restore(save);
                 Ok(DelegationSpecifier::Type(ty))
             }
@@ -1957,7 +1956,7 @@ fn read_modifiers(s: &mut TokenCursor, set: ModifierCtx) -> Result<Vec<Modifier>
             Ok(it) => {
                 modifiers.push(it);
             }
-            Err(e) => {
+            Err(_) => {
                 s.restore(save);
                 break;
             }

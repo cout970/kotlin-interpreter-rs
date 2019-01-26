@@ -62,7 +62,7 @@ struct Compiler {
 pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<CompiledFile, Vec<KtError>> {
     let ctx = Context { file, code, env: vec![] };
 
-    let mut compiler = Compiler {
+    let compiler = Compiler {
         ctx,
         constants: HashMap::new(),
         fields: HashMap::new(),
@@ -75,7 +75,7 @@ pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<C
 //        compile_top_level_object(&mut compiler, obj);
 //    }
 
-    compile_expr(&mut compiler, expr);
+//    compile_expr(&mut compiler, expr);
 
     if compiler.errors.is_empty() {
         Ok(CompiledFile {
@@ -90,70 +90,70 @@ pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<C
 }
 
 fn compile_expr(comp: &mut Compiler, expr: &Expr) -> PseudoBlock {
-    let mut insts = vec![];
-    match expr {
-        Expr::Chain { .. } => {}
-        Expr::InfixFun { .. } => {}
-        Expr::Prefix { .. } => {}
-        Expr::Postfix { .. } => {}
-        Expr::Is { .. } => {}
-        Expr::String(val) => {}
-        Expr::If { .. } => {}
-        Expr::Try { .. } => {}
-        Expr::For { .. } => {}
-        Expr::While { .. } => {}
-        Expr::DoWhile { .. } => {}
-        Expr::When { .. } => {}
-        Expr::Object { .. } => {}
-        Expr::CallableRef { .. } => {}
-        Expr::Lambda(_) => {
-
-        }
-        Expr::Ref(name) => {
-            insts.push(PseudoInstruction::LoadVar(name.clone()));
-        }
-        Expr::Boolean(val) => {
-            insts.push(PseudoInstruction::Load(Constant::Boolean(*val)))
-        }
-        Expr::Char(val) => {
-            insts.push(PseudoInstruction::Load(Constant::Char(*val)))
-        }
-        Expr::Number(num) => {
-            let constant = match num {
-                Number::Double(val) => Constant::Double(*val),
-                Number::Float(val) => Constant::Float(*val),
-                Number::Byte(val) => Constant::Byte(*val),
-                Number::Short(val) => Constant::Short(*val),
-                Number::Int(val) => Constant::Int(*val),
-                Number::Long(val) => Constant::Long(*val),
-            };
-            insts.push(PseudoInstruction::Load(constant));
-        }
-        Expr::Null => {
-            insts.push(PseudoInstruction::Load(Constant::Null));
-        }
-        Expr::This => {
-            insts.push(PseudoInstruction::LoadVar("this".to_owned()));
-        }
-        Expr::Return(opt) => {
-            if let Some(it) = opt {
-                insts.push(PseudoInstruction::Run(compile_expr(comp, &it.1)));
-            }
-            insts.push(PseudoInstruction::Return);
-        }
-        Expr::Super => {
-            insts.push(PseudoInstruction::LoadVar("super".to_owned()));
-        }
-        Expr::Throw(_) => {
-            // TODO
-        }
-        Expr::Continue => {
-
-        }
-        Expr::Break => {
-
-        }
-    }
+//    let mut insts = vec![];
+//    match expr {
+//        Expr::Chain { .. } => {}
+//        Expr::InfixFun { .. } => {}
+//        Expr::Prefix { .. } => {}
+//        Expr::Postfix { .. } => {}
+//        Expr::Is { .. } => {}
+//        Expr::String(val) => {}
+//        Expr::If { .. } => {}
+//        Expr::Try { .. } => {}
+//        Expr::For { .. } => {}
+//        Expr::While { .. } => {}
+//        Expr::DoWhile { .. } => {}
+//        Expr::When { .. } => {}
+//        Expr::Object { .. } => {}
+//        Expr::CallableRef { .. } => {}
+//        Expr::Lambda(_) => {
+//
+//        }
+//        Expr::Ref(name) => {
+//            insts.push(PseudoInstruction::LoadVar(name.clone()));
+//        }
+//        Expr::Boolean(val) => {
+//            insts.push(PseudoInstruction::Load(Constant::Boolean(*val)))
+//        }
+//        Expr::Char(val) => {
+//            insts.push(PseudoInstruction::Load(Constant::Char(*val)))
+//        }
+//        Expr::Number(num) => {
+//            let constant = match num {
+//                Number::Double(val) => Constant::Double(*val),
+//                Number::Float(val) => Constant::Float(*val),
+//                Number::Byte(val) => Constant::Byte(*val),
+//                Number::Short(val) => Constant::Short(*val),
+//                Number::Int(val) => Constant::Int(*val),
+//                Number::Long(val) => Constant::Long(*val),
+//            };
+//            insts.push(PseudoInstruction::Load(constant));
+//        }
+//        Expr::Null => {
+//            insts.push(PseudoInstruction::Load(Constant::Null));
+//        }
+//        Expr::This => {
+//            insts.push(PseudoInstruction::LoadVar("this".to_owned()));
+//        }
+//        Expr::Return(opt) => {
+//            if let Some(it) = opt {
+//                insts.push(PseudoInstruction::Run(compile_expr(comp, &it.1)));
+//            }
+//            insts.push(PseudoInstruction::Return);
+//        }
+//        Expr::Super => {
+//            insts.push(PseudoInstruction::LoadVar("super".to_owned()));
+//        }
+//        Expr::Throw(_) => {
+//            // TODO
+//        }
+//        Expr::Continue => {
+//
+//        }
+//        Expr::Break => {
+//
+//        }
+//    }
 
     unimplemented!()
 }

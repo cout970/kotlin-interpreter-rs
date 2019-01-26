@@ -295,7 +295,9 @@ fn run_block(vm: &mut VM, block: Rc<CompiledBlock>) -> Result<(), RuntimeError> 
                         }
                     }
                     Value::Boolean(it) => {
-                        pc += *offset;
+                        if it {
+                            pc += *offset;
+                        }
                     }
                     Value::Null => {
                         return Err(RuntimeError::NullPointerException);
@@ -350,7 +352,6 @@ fn run_block(vm: &mut VM, block: Rc<CompiledBlock>) -> Result<(), RuntimeError> 
 
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
 
     use super::*;
     use crate::interpreter::bytecode::CompiledFunction;
@@ -369,6 +370,6 @@ mod tests {
             block: Rc::new(CompiledBlock { instructions: vec![Instruction::Return] }),
         }));
 
-        let result = run(file).unwrap();
+        let _result = run(file).unwrap();
     }
 }

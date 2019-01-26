@@ -110,7 +110,7 @@ impl TokenCursor {
             let save = self.save();
             let res = match func(self) {
                 Ok(pair) => pair,
-                Err(e) => {
+                Err(_) => {
                     self.restore(save);
                     break;
                 }
@@ -158,6 +158,8 @@ impl TokenCursor {
                 return Ok(vec![]);
             }
         };
+
+        accum.push(res);
 
         while self.optional_expect(tk.clone()) {
             accum.push(func(self)?);

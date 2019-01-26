@@ -765,7 +765,6 @@ fn trim_comments(stream: &mut CodeCursor) -> Result<(), KtError> {
 #[cfg(test)]
 mod tests {
     use crate::source_code::from_str;
-    use crate::tokenizer::read_token;
     use crate::tokenizer::token::Token;
     use pretty_assertions::assert_eq;
 

@@ -8,12 +8,8 @@
 use std::fs;
 use std::fs::File;
 use std::io::Read;
-//use std::io::stdout;
-//use std::io::Write;
 use std::path::Path;
 
-use crate::errors::KtError;
-use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
 
@@ -95,7 +91,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::analyzer::semantic_rules::Checker;
-    use crate::analyzer::typechecker::TypeChecker;
+    use crate::parser::Parser;
     use crate::tokenizer::Tokenizer;
 
     use super::*;

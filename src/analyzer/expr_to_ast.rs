@@ -378,7 +378,7 @@ fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
         // TODO block creation
         Expr::Object { .. } => { unimplemented!() }
         Expr::CallableRef { .. } => { unimplemented!() }
-        Expr::Lambda(lit) => {
+        Expr::Lambda(_lit) => {
             unimplemented!()
         }
     }
@@ -450,7 +450,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                     args: create_vec(ast, args),
                 };
             }
-            ExprPostfix::FunCall(suffix) => {
+            ExprPostfix::FunCall(_suffix) => {
                 unimplemented!()
                 // TODO identify function by type parameters?
             }
@@ -680,14 +680,18 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
 }
 
 fn type_to_ast(ctx: &mut Context, ty: &Type) -> AstType {
-    match ty.reference.as_ref() {
-        TypeReference::Function(func) => type_func_to_ast(ctx, ty.span, func),
-        TypeReference::UserType(user) => simple_user_type_to_ast(ctx, ty.span, user),
+    type_reference_to_ast(ctx, ty.span, ty.reference.as_ref())
+}
+
+fn type_reference_to_ast(ctx: &mut Context, span: Span, ty: &TypeReference) -> AstType {
+    match ty {
+        TypeReference::Function(func) => type_func_to_ast(ctx, span, func),
+        TypeReference::UserType(user) => simple_user_type_to_ast(ctx, span, user),
         TypeReference::Nullable(reference) => {
             let mut ast = match reference.as_ref() {
-                TypeReference::Function(func) => type_func_to_ast(ctx, ty.span, func),
-                TypeReference::UserType(user) => simple_user_type_to_ast(ctx, ty.span, user),
-                TypeReference::Nullable(reference) => {
+                TypeReference::Function(func) => type_func_to_ast(ctx, span, func),
+                TypeReference::UserType(user) => simple_user_type_to_ast(ctx, span, user),
+                TypeReference::Nullable(_) => {
                     panic!("Double nullable!")
                 }
             };
@@ -698,11 +702,23 @@ fn type_to_ast(ctx: &mut Context, ty: &Type) -> AstType {
 }
 
 fn type_func_to_ast(ctx: &mut Context, span: Span, ty: &FunctionType) -> AstType {
+    let mut type_parameters = vec![];
+
+    if let Some(rec) = &ty.receiver {
+        type_parameters.push(AstTypeParameter::Type(type_reference_to_ast(ctx, span, rec)));
+    }
+
+    for param in &ty.parameters {
+        type_parameters.push(AstTypeParameter::Type(type_to_ast(ctx, param)));
+    }
+
+    type_parameters.push(AstTypeParameter::Type(type_reference_to_ast(ctx, span, &ty.return_type)));
+
     AstType {
         span,
         name: "Function".to_string(),
         full_name: "kotlin.Function".to_string(),
-        type_parameters: vec![],
+        type_parameters,
         nullable: false,
     }
 }
