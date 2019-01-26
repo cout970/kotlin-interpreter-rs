@@ -29,6 +29,14 @@ pub struct AstFile {
     pub classes: Vec<AstClass>,
     pub functions: Vec<AstFunction>,
     pub properties: Vec<AstProperty>,
+    pub typealias: Vec<AstTypealias>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstTypealias {
+    pub span: Span,
+    pub name: String,
+    pub ty: AstType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -47,6 +55,7 @@ pub struct AstLocalProperty {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstProperty {
+    pub span: Span,
     pub vars: Vec<AstVar>,
     pub delegated: bool,
     pub expr: Option<AstExpr>,
@@ -54,6 +63,7 @@ pub struct AstProperty {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFunction {
+    pub span: Span,
     pub extension: bool,
     pub operator: bool,
     pub name: String,
@@ -64,6 +74,7 @@ pub struct AstFunction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstClass {
+    pub span: Span,
     pub name: String,
     pub body: Vec<AstMember>,
 }

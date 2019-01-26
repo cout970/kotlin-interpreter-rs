@@ -52,6 +52,7 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
     let mut classes = vec![];
     let mut functions = vec![];
     let mut properties = vec![];
+    let mut typealias = vec![];
 
     ctx.modifier_ctx.push(ModifierCtx::TopLevelObject);
 
@@ -69,8 +70,12 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
             TopLevelObject::Property(prop) => {
                 properties.push(property_to_ast(&mut ctx, prop));
             }
-            TopLevelObject::TypeAlias(_) => {
-                unimplemented!()
+            TopLevelObject::TypeAlias(ta) => {
+                typealias.push(AstTypealias {
+                    span: ta.span,
+                    name: ta.name.to_string(),
+                    ty: type_to_ast(&mut ctx, &ta.ty),
+                })
             }
         }
     }
@@ -83,6 +88,7 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
             classes,
             functions,
             properties,
+            typealias,
         },
         ctx.errors
     )
@@ -108,6 +114,7 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                 Declaration::TypeAlias(ta) => {
                     ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
                     AstStatement::Class(AstClass {
+                        span: ta.span,
                         name: "_error_".to_string(),
                         body: vec![],
                     })
@@ -132,6 +139,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     ctx.modifier_ctx.pop().unwrap();
 
     AstClass {
+        span: class.span,
         name: class.name.to_string(),
         body,
     }
@@ -152,6 +160,7 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     ctx.modifier_ctx.pop().unwrap();
 
     AstClass {
+        span: class.span,
         name: class.name.to_string(),
         body,
     }
@@ -170,6 +179,7 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
         Member::TypeAlias(ta) => {
             ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
             AstMember::Class(AstClass {
+                span: SPAN_NONE,
                 name: "_error_".to_string(),
                 body: vec![],
             })
@@ -207,6 +217,7 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
     };
 
     AstProperty {
+        span: prop.span,
         vars,
         expr,
         delegated,
@@ -256,6 +267,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     let mut operator = false;
 
     if fun.modifiers.contains(&Modifier::Operator) {
+        // TODO move to typecheck step?
         operator = true;
         match fun.name.as_str() {
             "inc" | "dec" => {
@@ -314,6 +326,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     }
 
     AstFunction {
+        span: fun.span,
         extension: fun.receiver.is_some(),
         operator,
         name: fun.name.to_owned(),
