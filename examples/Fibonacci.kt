@@ -31,6 +31,9 @@ fun test() {
 
     0.test()
 }
+class A {
+
+}
 
 var test: Int
     inline get() = 5

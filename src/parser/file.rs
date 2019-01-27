@@ -1928,7 +1928,7 @@ fn read_value_parameters(s: &mut TokenCursor) -> Result<Vec<FunctionParameter>, 
 
 fn read_function_parameter(s: &mut TokenCursor) -> Result<FunctionParameter, KtError> {
     let modifiers = read_modifiers(s, ModifierCtx::FunctionParameter)?;
-    let mut mutability = ParameterMutability::Default;
+    let mutability = ParameterMutability::Default;
 
     let name = s.expect_id()?;
     s.expect(Token::Colon)?;

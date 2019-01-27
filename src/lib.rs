@@ -113,7 +113,7 @@ mod tests {
             let mut parser = Parser::new(code.clone(), tks);
             let file = parser.parse_file().expect(&format!("Parsing error at {}", path));
 
-            let (ast, errors) = file_to_ast(code.clone(), &file);
+            let (_ast, errors) = file_to_ast(code.clone(), &file);
 
             for x in errors {
                 dbg!(x);

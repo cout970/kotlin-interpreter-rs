@@ -2,20 +2,104 @@
 
 use std::collections::HashMap;
 
+use crate::analyzer::ast::AstFile;
+use crate::analyzer::typechecker::collect_file_info::collect_file_info;
 use crate::analyzer::typechecker::compiler::compile_file;
 use crate::analyzer::typechecker::type_reference_getter::get_all_references_to_types;
 use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
 
 mod type_reference_getter;
-mod type_info_collector;
+mod collect_file_info;
 mod compiler;
-
 
 pub struct TypeChecker {
     code: SourceCode,
     types: HashMap<String, TypeInfo>,
 }
+
+pub struct FileInfo {
+    pub functions: Vec<String>,
+    pub properties: Vec<String>,
+    pub classes: Vec<String>,
+}
+
+impl FileInfo {
+    pub fn new() -> Self {
+        Self {
+            functions: vec![],
+            properties: vec![],
+            classes: vec![],
+        }
+    }
+}
+
+pub struct RawFile {
+    pub path: String,
+    pub code: SourceCode,
+}
+
+pub struct ParsedFile {
+    pub path: String,
+    pub code: SourceCode,
+    pub ast: AstFile,
+}
+
+pub struct AnalyzedFile {
+    pub path: String,
+    pub code: SourceCode,
+    pub ast: AstFile,
+
+}
+
+pub fn check_types(files: Vec<ParsedFile>) {
+    let mut map: HashMap<String, FileInfo> = HashMap::new();
+
+    // Collect exposed names from files
+    for file in &files {
+        map.insert(file.path.clone(), collect_file_info(&file.ast));
+    }
+
+    // Resolve local names from imports
+
+    // Resolve global types
+
+    // Resolve local types
+
+    // Done?
+}
+
+impl TypeChecker {
+    pub fn run(code: SourceCode, ast: &KotlinFile) {
+        let checker = TypeChecker {
+            types: HashMap::new(),
+            code,
+        };
+
+
+        let refs = get_all_references_to_types(ast);
+
+//        collect_all_types_info(&mut checker.types, ast);
+
+//        compile_file(&mut checker, ast).unwrap();
+//        TypeResolver::resolve(&checker, &ast);
+
+        dbg!(refs);
+    }
+
+    pub fn get_class_info(&self, ty: &Type) -> Option<&ClassInfo> {
+        let info = self.types.get(&signature_of_type(ty))?;
+
+        match &info.kind {
+            Kind::Class(info) => Some(info),
+            Kind::Object(..) => None,
+            Kind::Function => None,
+        }
+    }
+}
+
+
+// OLD
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo {
@@ -57,7 +141,6 @@ impl ObjectInfo {
 }
 
 impl ClassInfo {
-
     pub fn new(file: &KotlinFile, class: &Class) -> Self {
         Self {
             class_type: class.class_type,
@@ -87,46 +170,17 @@ impl PropertyInfo {
 
 
 impl TypeInfo {
-    fn new(name: &str, path: &Vec<String>, kind: Kind) -> Self {
-        TypeInfo {
-            name: name.to_owned(),
-            path: path.clone(),
-            kind,
-            objects: HashMap::new(),
-            classes: HashMap::new(),
-            functions: HashMap::new(),
-            properties: HashMap::new(),
-        }
-    }
+//    fn new(name: &str) -> Self {
+//        TypeInfo {
+//            name: name.to_owned(),
+//            path: path.clone(),
+//            objects: HashMap::new(),
+//            classes: HashMap::new(),
+//            functions: HashMap::new(),
+//            properties: HashMap::new(),
+//        }
+//    }
 }
-
-impl TypeChecker {
-    pub fn run(code: SourceCode, ast: &KotlinFile) {
-        let checker = TypeChecker {
-            types: HashMap::new(),
-            code
-        };
-        let refs = get_all_references_to_types(ast);
-
-//        collect_all_types_info(&mut checker.types, ast);
-
-//        compile_file(&mut checker, ast).unwrap();
-//        TypeResolver::resolve(&checker, &ast);
-
-        dbg!(refs);
-    }
-
-    pub fn get_class_info(&self, ty: &Type) -> Option<&ClassInfo> {
-        let info = self.types.get(&signature_of_type(ty))?;
-
-        match &info.kind {
-            Kind::Class(info) => Some(info),
-            Kind::Object(..) => None,
-            Kind::Function => None,
-        }
-    }
-}
-
 
 fn signature_of_type(ty: &Type) -> String {
     signature_of_ref(&ty.reference)

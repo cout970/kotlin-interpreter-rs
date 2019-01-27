@@ -203,22 +203,20 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
         PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(ctx, expr))),
     };
 
-    let vars = if prop.declarations.len() == 1 {
-        let decl = prop.declarations.first().unwrap();
-        vec![AstVar {
-            name: decl.name.to_owned(),
-            ty: decl.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
-            mutable: prop.mutable,
-        }]
-    } else {
-        prop.declarations.iter()
-            .map(|decl| var_to_ast(ctx, prop.mutable, decl))
-            .collect()
+    if prop.declarations.len() != 1 {
+        ctx.new_error(prop.span, AnalyserError::DestructuringInTopLevel);
+    }
+
+    let decl = prop.declarations.first().unwrap();
+    let var = AstVar {
+        name: decl.name.to_owned(),
+        ty: decl.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
+        mutable: prop.mutable,
     };
 
     AstProperty {
         span: prop.span,
-        vars,
+        var,
         expr,
         delegated,
     }
