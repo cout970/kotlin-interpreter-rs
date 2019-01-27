@@ -3,6 +3,7 @@ pub mod typechecker;
 pub mod ast;
 pub mod tree_to_ast;
 mod modifiers;
+mod mutable_tree_visitor;
 
 #[cfg(test)]
 mod tests {
