@@ -67,6 +67,8 @@ pub struct AstProperty {
     pub var: AstVar,
     pub delegated: bool,
     pub expr: Option<AstExpr>,
+    pub getter: Option<AstFunction>,
+    pub setter: Option<AstFunction>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,6 +76,7 @@ pub struct AstFunction {
     pub span: Span,
     pub extension: bool,
     pub operator: bool,
+    pub member: bool,
     pub name: String,
     pub args: Vec<AstVar>,
     pub return_ty: Option<AstType>,
@@ -111,7 +114,7 @@ pub enum AstMember {
 pub enum AstExpr {
     Block {
         span: Span,
-        exprs: Vec<AstExpr>,
+        statements: Vec<AstStatement>,
     },
     Constant {
         span: Span,

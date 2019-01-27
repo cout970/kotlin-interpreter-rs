@@ -1,7 +1,5 @@
 @file:Suppress("unused")
 
-import kotlin.reflect.KProperty
-
 external fun println(x: Any)
 external fun <T> listOf(vararg value: T): List<T>
 
@@ -38,6 +36,7 @@ fun test() {
 
     0.test()
 }
+
 class A {
 
 }
@@ -68,7 +67,15 @@ class MyBox<T>(private val value: T?) {
     }
 }
 
-val <T> List<T>.first: T get() = this[0]
+//var <T> List<T>.first: T? = null
+//    get() = this[0]
+//    private set
+
+fun <T> T.apply(func: T.() -> Unit): T {
+    func()
+    return this
+}
+
 
 /**
  * You can edit, run, and share this code.
@@ -77,10 +84,8 @@ val <T> List<T>.first: T get() = this[0]
 
 //lateinit var a: List<Int>
 
-
 // var a = 0
 // 	private in set
-
 
 fun finally(a: () -> String): String? {
     println("The result is ${a()}")

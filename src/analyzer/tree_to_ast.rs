@@ -1,7 +1,8 @@
 use std::rc::Rc;
 
+use lazy_static::*;
+
 use crate::analyzer::ast::*;
-use crate::analyzer::ast::AstProperty;
 use crate::analyzer::modifiers::check_modifiers;
 use crate::create_vec;
 use crate::errors::AnalyserError;
@@ -16,6 +17,24 @@ struct Context {
     code: SourceCode,
     errors: Vec<KtError>,
     modifier_ctx: Vec<ModifierCtx>,
+    env_type: Vec<EnvType>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum EnvType {
+    TopLevel,
+    Class,
+    Statement,
+}
+
+lazy_static! {
+    static ref UNIT_TYPE: AstType = AstType {
+        span: (0, 0),
+        name: "Unit".to_string(),
+        full_name: "kotlin.Unit".to_string(),
+        type_parameters: Vec::new(),
+        nullable: false,
+    };
 }
 
 impl Context {
@@ -47,6 +66,7 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
         code: code.clone(),
         errors: vec![],
         modifier_ctx: vec![],
+        env_type: vec![EnvType::TopLevel],
     };
 
     let mut classes = vec![];
@@ -139,6 +159,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Class);
     let mut body = vec![];
 
+    ctx.env_type.push(EnvType::Class);
     ctx.modifier_ctx.push(ModifierCtx::ClassMember);
 
     if let Some(b) = &class.body {
@@ -148,6 +169,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     }
 
     ctx.modifier_ctx.pop().unwrap();
+    ctx.env_type.pop().unwrap();
 
     AstClass {
         span: class.span,
@@ -160,6 +182,7 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Object);
     let mut body = vec![];
 
+    ctx.env_type.push(EnvType::Class);
     ctx.modifier_ctx.push(ModifierCtx::ClassMember);
 
     if let Some(b) = &class.body {
@@ -169,6 +192,7 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     }
 
     ctx.modifier_ctx.pop().unwrap();
+    ctx.env_type.pop().unwrap();
 
     AstClass {
         span: class.span,
@@ -208,11 +232,14 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
 
 fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
     ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
+
+    ctx.env_type.push(EnvType::Statement);
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
         PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(ctx, expr))),
     };
+    ctx.env_type.pop().unwrap();
 
     if prop.declarations.len() != 1 {
         ctx.new_error(prop.span, AnalyserError::DestructuringInTopLevel);
@@ -225,26 +252,74 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
         mutable: prop.mutable,
     };
 
+    let getter = if let Some(get) = &prop.getter {
+        let mut capitalized = var.name.clone();
+        if let Some(r) = capitalized.get_mut(0..1) {
+            r.make_ascii_uppercase();
+        }
+        let name = "get".to_string() + &capitalized;
+        let member = *ctx.env_type.last().unwrap() == EnvType::Class;
+        let body = function_body_to_ast(ctx, &get.body);
+
+        Some(AstFunction {
+            span: get.span,
+            extension: false,
+            operator: false,
+            member,
+            name,
+            args: vec![],
+            return_ty: var.ty.clone(),
+            body,
+        })
+    } else {
+        None
+    };
+
+    let setter = if let Some(set) = &prop.setter {
+        let mut capitalized = var.name.clone();
+        if let Some(r) = capitalized.get_mut(0..1) {
+            r.make_ascii_uppercase();
+        }
+        let name = "set".to_string() + &capitalized;
+        let member = *ctx.env_type.last().unwrap() == EnvType::Class;
+        let body = function_body_to_ast(ctx, &set.body);
+        let mut args = vec![];
+
+        args.push(AstVar {
+            name: set.param_name.clone().unwrap_or("value".to_string()),
+            ty: var.ty.clone(),
+            mutable: false,
+        });
+
+        Some(AstFunction {
+            span: set.span,
+            extension: false,
+            operator: false,
+            member,
+            name,
+            args,
+            return_ty: Some(UNIT_TYPE.clone()),
+            body,
+        })
+    } else {
+        None
+    };
+
     AstProperty {
         span: prop.span,
         var,
         expr,
         delegated,
+        getter,
+        setter,
     }
 }
 
 fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     ctx.check_modifiers(fun.span, &fun.modifiers, ModifierTarget::Function);
 
-    ctx.modifier_ctx.push(ModifierCtx::Statement);
-    let body = fun.body.as_ref().map(|body| {
-        match body {
-            FunctionBody::Block(e) => block_to_ast(ctx, e),
-            FunctionBody::Expression(e) => expr_to_ast(ctx, e),
-        }
-    });
-    ctx.modifier_ctx.pop().unwrap();
-
+    let body = function_body_to_ast(ctx, &fun.body);
+    let member = *ctx.env_type.last().unwrap() == EnvType::Class;
 
     let mut args = vec![];
 
@@ -275,6 +350,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 
     let mut operator = false;
 
+    // Check modifiers
     if fun.modifiers.contains(&Modifier::Operator) {
         // TODO move to typecheck step?
         operator = true;
@@ -339,10 +415,23 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
         extension: fun.receiver.is_some(),
         operator,
         name: fun.name.to_owned(),
+        member,
         args,
         return_ty,
         body,
     }
+}
+
+fn function_body_to_ast(ctx: &mut Context, body: &Option<FunctionBody>) -> Option<AstExpr> {
+    ctx.modifier_ctx.push(ModifierCtx::Statement);
+    let res = body.as_ref().map(|body| {
+        match body {
+            FunctionBody::Block(e) => block_to_ast(ctx, e),
+            FunctionBody::Expression(e) => expr_to_ast(ctx, e),
+        }
+    });
+    ctx.modifier_ctx.pop().unwrap();
+    res
 }
 
 fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
@@ -548,16 +637,18 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
 
                 ast = AstExpr::Block {
                     span,
-                    exprs: vec![
-                        AstExpr::WriteRef {
+                    statements: vec![
+                        // Save to temp var
+                        AstStatement::Expr(AstExpr::WriteRef {
                             span,
                             name: variable.to_owned() + "_",
                             expr: Rc::new(AstExpr::Ref {
                                 span,
                                 name: variable.to_owned(),
                             }),
-                        },
-                        AstExpr::WriteRef {
+                        }),
+                        // Update var
+                        AstStatement::Expr(AstExpr::WriteRef {
                             span,
                             name: variable.to_owned(),
                             expr: Rc::new(AstExpr::Call {
@@ -570,11 +661,12 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                                     }
                                 ],
                             }),
-                        },
-                        AstExpr::Ref {
+                        }),
+                        // read temp var
+                        AstStatement::Expr(AstExpr::Ref {
                             span,
                             name: variable.to_owned() + "_",
-                        }
+                        })
                     ],
                 };
             }
@@ -928,20 +1020,15 @@ fn var_to_ast(ctx: &mut Context, mutable: bool, var: &VariableDeclarationEntry) 
 }
 
 fn block_to_ast(ctx: &mut Context, block: &Block) -> AstExpr {
-    let mut exprs = vec![];
+    let mut statements = vec![];
 
     for statement in &block.1 {
-        match statement {
-            Statement::Expr(e) => {
-                exprs.push(expr_to_ast(ctx, e))
-            }
-            Statement::Decl(_) => {}
-        }
+        statements.push(statement_to_ast(ctx, statement));
     }
 
     AstExpr::Block {
         span: block.0,
-        exprs,
+        statements,
     }
 }
 
