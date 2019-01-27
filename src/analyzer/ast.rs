@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::interpreter::bytecode::Constant;
@@ -86,13 +87,40 @@ pub struct AstFunction {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstClass {
-    // visibility
-    // open, final, abstract, sealed
-    // data, enum, annotation, inline, interface
-    // inner
+    // visibility: ignored for now
     pub span: Span,
     pub name: String,
+    pub inner: bool,
+    pub class_type: AstClassType,
+    pub inheritance_modifier: AstInheritanceModifier,
     pub body: Vec<AstMember>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AstVisibility {
+    Public,
+    Private,
+    Protected,
+    Internal,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AstClassType {
+    Regular,
+    Interface,
+    Enum,
+    Annotation,
+    Data,
+    Inline,
+    Object,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum AstInheritanceModifier {
+    Final,
+    Open,
+    Abstract,
+    Sealed,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +136,12 @@ pub enum AstMember {
     Class(AstClass),
     Function(AstFunction),
     Property(AstProperty),
+}
+
+pub type MutRc<T> = Rc<RefCell<T>>;
+
+pub fn mut_rc<T>(a: T) -> MutRc<T> {
+    Rc::new(RefCell::new(a))
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,39 +166,39 @@ pub enum AstExpr {
     ReadField {
         span: Span,
         field: String,
-        object: Rc<AstExpr>,
+        object: MutRc<AstExpr>,
     },
     WriteRef {
         span: Span,
         name: String,
-        expr: Rc<AstExpr>,
+        expr: MutRc<AstExpr>,
     },
     Is {
         span: Span,
-        expr: Rc<AstExpr>,
+        expr: MutRc<AstExpr>,
         ty: AstType,
     },
     If {
         span: Span,
-        cond: Rc<AstExpr>,
-        if_true: Rc<AstExpr>,
-        if_false: Option<Rc<AstExpr>>,
+        cond: MutRc<AstExpr>,
+        if_true: MutRc<AstExpr>,
+        if_false: Option<MutRc<AstExpr>>,
     },
     For {
         span: Span,
         variables: Vec<AstVar>,
-        expr: Rc<AstExpr>,
-        body: Rc<AstExpr>,
+        expr: MutRc<AstExpr>,
+        body: MutRc<AstExpr>,
     },
     While {
         span: Span,
-        expr: Rc<AstExpr>,
-        body: Rc<AstExpr>,
+        expr: MutRc<AstExpr>,
+        body: MutRc<AstExpr>,
     },
     DoWhile {
         span: Span,
-        expr: Rc<AstExpr>,
-        body: Rc<AstExpr>,
+        expr: MutRc<AstExpr>,
+        body: MutRc<AstExpr>,
     },
     Continue {
         span: Span,
@@ -174,16 +208,16 @@ pub enum AstExpr {
     },
     Try {
         span: Span,
-        body: Rc<AstExpr>,
+        body: MutRc<AstExpr>,
         catch: Vec<(AstVar, AstExpr)>,
-        finally: Option<Rc<AstExpr>>,
+        finally: Option<MutRc<AstExpr>>,
     },
     Throw {
         span: Span,
-        exception: Rc<AstExpr>,
+        exception: MutRc<AstExpr>,
     },
     Return {
         span: Span,
-        value: Option<Rc<AstExpr>>,
+        value: Option<MutRc<AstExpr>>,
     },
 }

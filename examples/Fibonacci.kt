@@ -93,6 +93,28 @@ fun finally(a: () -> String): String? {
     return null
 }
 
+// This
+enum class Color(val rgb: Int) {
+    Red(0xFF0000) {
+        override fun asHex(): String = "#FF000"
+    };
+
+    abstract fun asHex(): String
+}
+
+// Becomes this
+sealed class Color2(val rgb: Int) {
+
+    companion object {
+        val Red = `Color2$Red`
+    }
+
+    object `Color2$Red` : Color2(0xFF0000) {
+        override fun asHex(): String = "#FF000"
+    }
+
+    abstract fun asHex(): String
+}
 
 class Test constructor() {
 
@@ -104,11 +126,11 @@ class Test constructor() {
     }
 }
 
-enum class Color {
-    Red,
-    inline Green,
-    Blue
-}
+//enum class Color {
+//    Red,
+//    inline Green,
+//    Blue
+//}
 
 fun main() {
     Test().test()

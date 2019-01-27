@@ -56,6 +56,7 @@ pub enum AnalyserError {
     InvalidOperatorFunctionName,
     FunctionParameterInvalidMutability,
     DestructuringInTopLevel,
+    InvalidInnerClass,
     UnresolvedReference(String),
 }
 

@@ -24,6 +24,12 @@ pub struct Visitor<'t, S> {
 
     pub pre_visit_expr: Option<Func<'t, S, AstExpr>>,
     pub post_visit_expr: Option<Func<'t, S, AstExpr>>,
+
+    pub pre_visit_statement: Option<Func<'t, S, AstStatement>>,
+    pub post_visit_statement: Option<Func<'t, S, AstStatement>>,
+
+    pub pre_visit_local_property: Option<Func<'t, S, AstLocalProperty>>,
+    pub post_visit_local_property: Option<Func<'t, S, AstLocalProperty>>,
 }
 
 pub fn visit_file<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstFile) {
@@ -140,17 +146,121 @@ pub fn visit_type<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstType) {
     }
 }
 
+pub fn visit_rc_expr<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut MutRc<AstExpr>) {
+    visit_expr(v, state, &mut ast.borrow_mut());
+}
+
 pub fn visit_expr<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstExpr) {
     if let Some(func) = &mut v.pre_visit_expr {
         func(state, ast);
     }
 
-
+    match ast {
+        AstExpr::Block { statements, .. } => {
+            for stmt in statements {
+                visit_statement(v, state, stmt);
+            }
+        }
+        AstExpr::Constant { .. } => {}
+        AstExpr::Ref { .. } => {}
+        AstExpr::Call { args, .. } => {
+            for arg in args {
+                visit_expr(v, state, arg);
+            }
+        }
+        AstExpr::ReadField { object, .. } => {
+            visit_rc_expr(v, state, object);
+        }
+        AstExpr::WriteRef { expr, .. } => {
+            visit_rc_expr(v, state, expr);
+        }
+        AstExpr::Is { expr, .. } => {
+            visit_rc_expr(v, state, expr);
+        }
+        AstExpr::If { cond, if_true, if_false, .. } => {
+            visit_rc_expr(v, state, cond);
+            visit_rc_expr(v, state, if_true);
+            if let Some(if_false) = if_false {
+                visit_rc_expr(v, state, if_false);
+            }
+        }
+        AstExpr::For { variables, expr, body, .. } => {
+            for var in variables {
+                visit_var(v, state, var);
+            }
+            visit_rc_expr(v, state, expr);
+            visit_rc_expr(v, state, body);
+        }
+        AstExpr::While { expr, body, .. } => {
+            visit_rc_expr(v, state, expr);
+            visit_rc_expr(v, state, body);
+        }
+        AstExpr::DoWhile { expr, body, .. } => {
+            visit_rc_expr(v, state, expr);
+            visit_rc_expr(v, state, body);
+        }
+        AstExpr::Continue { .. } => {}
+        AstExpr::Break { .. } => {}
+        AstExpr::Try { body, catch, finally, .. } => {
+            visit_rc_expr(v, state, body);
+            for (var, expr) in catch {
+                visit_var(v, state, var);
+                visit_expr(v, state, expr);
+            }
+            if let Some(expr) = finally {
+                visit_rc_expr(v, state, expr);
+            }
+        }
+        AstExpr::Throw { exception, .. } => {
+            visit_rc_expr(v, state, exception);
+        }
+        AstExpr::Return { value, .. } => {
+            if let Some(expr) = value {
+                visit_rc_expr(v, state, expr);
+            }
+        }
+    }
 
     if let Some(func) = &mut v.post_visit_expr {
         func(state, ast);
     }
 }
+
+pub fn visit_statement<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstStatement) {
+    if let Some(func) = &mut v.pre_visit_statement {
+        func(state, ast);
+    }
+
+    match ast {
+        AstStatement::Expr(ast) => visit_expr(v, state, ast),
+        AstStatement::Class(ast) => visit_class(v, state, ast),
+        AstStatement::Function(ast) => visit_function(v, state, ast),
+        AstStatement::Property(ast) => visit_local_property(v, state, ast),
+    }
+
+    if let Some(func) = &mut v.post_visit_statement {
+        func(state, ast);
+    }
+}
+
+pub fn visit_local_property<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstLocalProperty) {
+    if let Some(func) = &mut v.pre_visit_local_property {
+        func(state, ast);
+    }
+
+    for var in &mut ast.vars {
+        visit_var(v, state, var);
+    }
+
+    if let Some(expr) = &mut ast.expr {
+        visit_expr(v, state, expr);
+    }
+
+    if let Some(func) = &mut v.post_visit_local_property {
+        func(state, ast);
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -164,6 +274,9 @@ mod tests {
             classes: vec![AstClass {
                 span: (0, 0),
                 name: "ClassName".to_string(),
+                inner: false,
+                class_type: AstClassType::Regular,
+                inheritance_modifier: AstInheritanceModifier::Final,
                 body: vec![],
             }],
             functions: vec![],
