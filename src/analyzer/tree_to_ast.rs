@@ -53,6 +53,16 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
     let mut functions = vec![];
     let mut properties = vec![];
     let mut typealias = vec![];
+    let mut imports = vec![];
+
+
+    for import in &file.preamble.imports {
+        imports.push(AstImport {
+            span: import.span,
+            name: import.path.to_owned().join("."),
+            alias: import.alias.clone(),
+        })
+    }
 
     ctx.modifier_ctx.push(ModifierCtx::TopLevelObject);
 
@@ -85,6 +95,7 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
     (
         AstFile {
             package: file.get_package_str(),
+            imports,
             classes,
             functions,
             properties,

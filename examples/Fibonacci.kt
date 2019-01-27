@@ -8,12 +8,19 @@ external fun <T> listOf(vararg value: T): List<T>
 fun main(args: Array<String>) {
     println(fibonacci(12))
 //    listOf(1,2,3).map{}
+
+
+//    val a: collections.BooleanIterator? = null
+//    val b: BooleanIterator? = null
 }
 
 fun fibonacci(x: Int): Int = when (x) {
     0, 1 -> 1
     else -> fibonacci(x - 1) + fibonacci(x - 2)
 }
+
+val a: Int
+    get() = a
 
 fun test() {
     val a: Int by 0
@@ -68,7 +75,7 @@ val <T> List<T>.first: T get() = this[0]
  * play.kotlinlang.org
  */
 
-lateinit var a: List<Int>
+//lateinit var a: List<Int>
 
 
 // var a = 0

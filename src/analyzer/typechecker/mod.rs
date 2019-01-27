@@ -8,10 +8,12 @@ use crate::analyzer::typechecker::compiler::compile_file;
 use crate::analyzer::typechecker::type_reference_getter::get_all_references_to_types;
 use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
+use crate::analyzer::typechecker::resolve_imports::resolve_imports;
 
 mod type_reference_getter;
 mod collect_file_info;
 mod compiler;
+mod resolve_imports;
 
 pub struct TypeChecker {
     code: SourceCode,
@@ -42,29 +44,44 @@ pub struct RawFile {
 pub struct ParsedFile {
     pub path: String,
     pub code: SourceCode,
-    pub ast: AstFile,
+    pub ast: KotlinFile,
 }
 
-pub struct AnalyzedFile {
+pub struct CheckedFile {
     pub path: String,
     pub code: SourceCode,
     pub ast: AstFile,
-
 }
 
-pub fn check_types(files: Vec<ParsedFile>) {
-    let mut map: HashMap<String, FileInfo> = HashMap::new();
+//pub struct AnalyzedFile {
+//    pub path: String,
+//    pub code: SourceCode,
+//    pub ast: AstFile,
+//
+//}
+
+pub fn check_types(mut files: Vec<CheckedFile>) {
+    let mut file_map: HashMap<String, FileInfo> = HashMap::new();
 
     // Collect exposed names from files
     for file in &files {
-        map.insert(file.path.clone(), collect_file_info(&file.ast));
+        // TODO file path or package path?
+        file_map.insert(file.path.clone(), collect_file_info(&file.ast));
     }
 
-    // Resolve local names from imports
+    // Resolve type names from imports
+    for file in &mut files {
+        resolve_imports(&file_map, &file.path, &mut file.ast)
+    }
 
     // Resolve global types
+    // - Resolve function types
+    // - Resolve property types
 
     // Resolve local types
+    // - Resolve function inferred return
+    // - Resolve local properties
+    // - Resolve abstract methods
 
     // Done?
 }

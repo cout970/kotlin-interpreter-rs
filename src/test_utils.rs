@@ -1,4 +1,3 @@
-use crate::errors::KtError;
 use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::tokenizer::Tokenizer;

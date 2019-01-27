@@ -26,6 +26,7 @@ pub enum AstTypeParameter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFile {
     pub package: String,
+    pub imports: Vec<AstImport>,
     pub classes: Vec<AstClass>,
     pub functions: Vec<AstFunction>,
     pub properties: Vec<AstProperty>,
@@ -37,6 +38,13 @@ pub struct AstTypealias {
     pub span: Span,
     pub name: String,
     pub ty: AstType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstImport {
+    pub span: Span,
+    pub name: String,
+    pub alias: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,10 +78,15 @@ pub struct AstFunction {
     pub args: Vec<AstVar>,
     pub return_ty: Option<AstType>,
     pub body: Option<AstExpr>,
+    // TODO default parameters
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstClass {
+    // visibility
+    // open, final, abstract, sealed
+    // data, enum, annotation, inline, interface
+    // inner
     pub span: Span,
     pub name: String,
     pub body: Vec<AstMember>,
