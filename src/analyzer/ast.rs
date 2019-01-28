@@ -85,7 +85,7 @@ pub struct AstFunction {
     // TODO default parameters
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AstClass {
     // visibility: ignored for now
     pub span: Span,
@@ -93,6 +93,9 @@ pub struct AstClass {
     pub inner: bool,
     pub class_type: AstClassType,
     pub inheritance_modifier: AstInheritanceModifier,
+    // Delegation by?
+    pub interfaces: Vec<AstType>,
+    pub super_type: Option<AstType>,
     pub body: Vec<AstMember>,
 }
 
@@ -102,6 +105,10 @@ pub enum AstVisibility {
     Private,
     Protected,
     Internal,
+}
+
+impl Default for AstVisibility {
+    fn default() -> Self { AstVisibility::Public }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -115,12 +122,20 @@ pub enum AstClassType {
     Object,
 }
 
+impl Default for AstClassType {
+    fn default() -> Self { AstClassType::Regular }
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum AstInheritanceModifier {
     Final,
     Open,
     Abstract,
     Sealed,
+}
+
+impl Default for AstInheritanceModifier {
+    fn default() -> Self { AstInheritanceModifier::Final }
 }
 
 #[derive(Debug, Clone, PartialEq)]

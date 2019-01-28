@@ -145,10 +145,7 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                     AstStatement::Class(AstClass {
                         span: ta.span,
                         name: "_error_".to_string(),
-                        inner: false,
-                        class_type: AstClassType::Regular,
-                        inheritance_modifier: AstInheritanceModifier::Final,
-                        body: vec![],
+                        ..AstClass::default()
                     })
                 }
             }
@@ -207,6 +204,26 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
         AstInheritanceModifier::Final
     };
 
+    let mut interfaces = vec![];
+    let mut super_type = None;
+
+    for del in &class.delegations {
+        match del {
+            DelegationSpecifier::Type(ty) => {
+                interfaces.push(type_to_ast(ctx, ty));
+            }
+            DelegationSpecifier::DelegatedBy(ty, _) => {
+                interfaces.push(type_to_ast(ctx, ty));
+                // TODO delegation by expr
+            }
+            DelegationSpecifier::FunctionCall(ty, _) => {
+                if let Some(_) = super_type {
+                    ctx.new_error(class.span, AnalyserError::MultipleInheritance);
+                }
+                super_type = Some(type_to_ast(ctx, ty));
+            }
+        }
+    }
 
     AstClass {
         span: class.span,
@@ -214,6 +231,8 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
         inner,
         class_type,
         inheritance_modifier,
+        interfaces,
+        super_type,
         body,
     }
 }
@@ -223,10 +242,9 @@ fn enum_entries_to_ast(_ctx: &mut Context, span: Span, class_body: &ClassBody, m
         members.push(AstMember::Class(AstClass {
             span,
             name: entry.name.to_string(),
-            inner: false,
             class_type: AstClassType::Object,
             inheritance_modifier: AstInheritanceModifier::Final,
-            body: vec![],
+            ..AstClass::default()
         }));
     }
 //    TODO needs initializer blocks
@@ -274,12 +292,35 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     ctx.modifier_ctx.pop().unwrap();
     ctx.env_type.pop().unwrap();
 
+    let mut interfaces = vec![];
+    let mut super_type = None;
+
+    for del in &class.delegations {
+        match del {
+            DelegationSpecifier::Type(ty) => {
+                interfaces.push(type_to_ast(ctx, ty));
+            }
+            DelegationSpecifier::DelegatedBy(ty, _) => {
+                interfaces.push(type_to_ast(ctx, ty));
+                // TODO delegation by expr
+            }
+            DelegationSpecifier::FunctionCall(ty, _) => {
+                if let Some(_) = super_type {
+                    ctx.new_error(class.span, AnalyserError::MultipleInheritance);
+                }
+                super_type = Some(type_to_ast(ctx, ty));
+            }
+        }
+    }
+
     AstClass {
         span: class.span,
         name: class.name.to_string(),
         inner: false,
         class_type: AstClassType::Object,
         inheritance_modifier: AstInheritanceModifier::Final,
+        interfaces,
+        super_type,
         body,
     }
 }
@@ -297,12 +338,9 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
         Member::TypeAlias(ta) => {
             ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
             AstMember::Class(AstClass {
-                span: SPAN_NONE,
+                span: ta.span,
                 name: "_error_".to_string(),
-                inner: false,
-                class_type: AstClassType::Regular,
-                inheritance_modifier: AstInheritanceModifier::Final,
-                body: vec![],
+                ..AstClass::default()
             })
         }
         Member::AnonymousInitializer(_) => {

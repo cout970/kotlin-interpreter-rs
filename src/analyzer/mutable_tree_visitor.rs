@@ -16,6 +16,9 @@ pub struct Visitor<'t, S> {
     pub pre_visit_function: Option<Func<'t, S, AstFunction>>,
     pub post_visit_function: Option<Func<'t, S, AstFunction>>,
 
+    pub pre_visit_typealias: Option<Func<'t, S, AstTypealias>>,
+    pub post_visit_typealias: Option<Func<'t, S, AstTypealias>>,
+
     pub pre_visit_var: Option<Func<'t, S, AstVar>>,
     pub post_visit_var: Option<Func<'t, S, AstVar>>,
 
@@ -49,7 +52,23 @@ pub fn visit_file<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstFile) {
         visit_function(v, state, fun);
     }
 
+    for alias in &mut ast.typealias {
+        visit_typealias(v, state, alias);
+    }
+
     if let Some(func) = &mut v.post_visit_file {
+        func(state, ast);
+    }
+}
+
+pub fn visit_typealias<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstTypealias) {
+    if let Some(func) = &mut v.pre_visit_typealias {
+        func(state, ast);
+    }
+
+    visit_type(v, state, &mut ast.ty);
+
+    if let Some(func) = &mut v.post_visit_typealias {
         func(state, ast);
     }
 }
@@ -57,6 +76,12 @@ pub fn visit_file<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstFile) {
 pub fn visit_class<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstClass) {
     if let Some(func) = &mut v.pre_visit_class {
         func(state, ast);
+    }
+
+    visit_opt_type(v, state, &mut ast.super_type);
+
+    for i in &mut ast.interfaces {
+        visit_type(v, state, i);
     }
 
     for member in &mut ast.body {
@@ -272,12 +297,8 @@ mod tests {
             package: "".to_string(),
             imports: vec![],
             classes: vec![AstClass {
-                span: (0, 0),
                 name: "ClassName".to_string(),
-                inner: false,
-                class_type: AstClassType::Regular,
-                inheritance_modifier: AstInheritanceModifier::Final,
-                body: vec![],
+                ..AstClass::default()
             }],
             functions: vec![],
             properties: vec![],
