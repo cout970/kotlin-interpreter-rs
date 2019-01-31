@@ -812,12 +812,29 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                     args: create_vec(ast, args),
                 };
             }
-            ExprPostfix::FunCall(_suffix) => {
-                unimplemented!()
+            ExprPostfix::FunCall(suffix) => {
+
+                let mut args = vec![];
+
+                // TODO named arguments
+                for x in &suffix.value_arguments {
+                    args.push(expr_to_ast(ctx, &x.expr));
+                }
+
+                ast = AstExpr::CallInvoke {
+                    span: (span.0, suffix.span.1),
+                    function: mut_rc(ast),
+                    args,
+                };
                 // TODO identify function by type parameters?
             }
-            ExprPostfix::MemberAccess { .. } => {
-                unimplemented!()
+            ExprPostfix::MemberAccess { operator, member,.. } => {
+                // TODO operator: . ?.
+                ast = AstExpr::ReadField {
+                    span,
+                    field: member.to_owned(),
+                    object: mut_rc(ast)
+                };
             }
         }
     }
@@ -1188,6 +1205,7 @@ fn get_span(expr: &AstExpr) -> Span {
         AstExpr::Constant { span, .. } => *span,
         AstExpr::Ref { span, .. } => *span,
         AstExpr::Call { span, .. } => *span,
+        AstExpr::CallInvoke { span, .. } => *span,
         AstExpr::ReadField { span, .. } => *span,
         AstExpr::WriteRef { span, .. } => *span,
         AstExpr::Is { span, .. } => *span,

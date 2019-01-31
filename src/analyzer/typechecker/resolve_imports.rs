@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::analyzer::ast::*;
+use crate::analyzer::mutable_tree_visitor::visit_file;
+use crate::analyzer::mutable_tree_visitor::Visitor;
 use crate::analyzer::typechecker::CheckedFile;
 use crate::analyzer::typechecker::FileInfo;
 use crate::errors::AnalyserError;
@@ -84,7 +86,7 @@ impl<'t> Context<'t> {
     }
 }
 
-pub fn resolve_imports(files: &Files, path: &str, ast: &mut AstFile) {
+pub fn resolve_imports(files: &Files, path: &str, ast: &mut AstFile) -> Vec<(Span, AnalyserError)> {
     let mut ctx = Context {
         files,
         alias: HashMap::new(),
@@ -112,15 +114,43 @@ pub fn resolve_imports(files: &Files, path: &str, ast: &mut AstFile) {
     }
 
     // Traverse code to update references
-    for class in &mut ast.classes {
-        visit_class(&mut ctx, class);
-    }
+    let mut pre_visit_type = &mut |ctx: &mut Context, ty: &mut AstType| {
+        update_type(ctx, ty)
+    };
+
+    let mut pre_visit_class = &mut |ctx: &mut Context, ast: &mut AstClass| {
+        ctx.add_symbol(&ast.name);
+    };
+
+    let mut pre_visit_function = &mut |ctx: &mut Context, ast: &mut AstFunction| {
+        ctx.add_symbol(&ast.name);
+    };
+
+    let mut pre_visit_var = &mut |ctx: &mut Context, ast: &mut AstVar| {
+        ctx.add_symbol(&ast.name);
+    };
+
+    let mut post_visit_class = &mut post_visit_block;
+    let mut post_visit_function = &mut post_visit_block;
+    // TODO add missing visitors
+
+    let mut visitor: Visitor<Context> = Visitor {
+        pre_visit_type: Some(pre_visit_type),
+        pre_visit_class: Some(pre_visit_class),
+        post_visit_class: Some(post_visit_class),
+        pre_visit_function: Some(pre_visit_function),
+        post_visit_function: Some(post_visit_function),
+        pre_visit_var: Some(pre_visit_var),
+        ..Visitor::default()
+    };
+
+    visit_file(&mut visitor, &mut ctx, ast);
+
+    ctx.errors
 }
 
-fn opt_update_type(ctx: &mut Context, ty: &mut Option<AstType>) {
-    if let Some(ty) = ty {
-        update_type(ctx, ty);
-    }
+fn post_visit_block<T>(ctx: &mut Context, ast: &mut T) {
+    ctx.exit_block();
 }
 
 fn update_type(ctx: &mut Context, ty: &mut AstType) {
@@ -139,51 +169,4 @@ fn update_type(ctx: &mut Context, ty: &mut AstType) {
             }
         }
     }
-}
-
-fn visit_class(ctx: &mut Context, class: &mut AstClass) {
-    ctx.add_symbol(&class.name);
-
-    // TODO analyze the rest of the class
-    ctx.enter_block();
-    for member in &mut class.body {
-        match member {
-            AstMember::Class(subclass) => visit_class(ctx, subclass),
-            AstMember::Function(fun) => visit_function(ctx, fun),
-            AstMember::Property(prop) => visit_property(ctx, prop),
-        }
-    }
-    ctx.exit_block();
-}
-
-fn visit_function(ctx: &mut Context, fun: &mut AstFunction) {
-    ctx.add_symbol(&fun.name);
-
-    opt_update_type(ctx, &mut fun.return_ty);
-
-    for var in &mut fun.args {
-        opt_update_type(ctx, &mut var.ty);
-    }
-
-    if let Some(expr) = &mut fun.body {
-        ctx.enter_block();
-        visit_expr(ctx, expr);
-        ctx.exit_block();
-    }
-}
-
-fn visit_property(ctx: &mut Context, prop: &mut AstProperty) {
-    ctx.add_symbol(&prop.var.name);
-
-    opt_update_type(ctx, &mut prop.var.ty);
-
-    if let Some(expr) = &mut prop.expr {
-        ctx.enter_block();
-        visit_expr(ctx, expr);
-        ctx.exit_block();
-    }
-}
-
-fn visit_expr(ctx: &mut Context, fun: &mut AstExpr) {
-// TODO
 }

@@ -275,7 +275,7 @@ pub enum ExprPostfix {
     AssertNonNull,
     ArrayAccess(Vec<ExprVal>),
     FunCall(CallSuffix),
-    MemberAccess { operator: String, next: ExprVal },
+    MemberAccess { operator: String, member: String },
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -497,6 +497,7 @@ pub enum DelegationSpecifier {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CallSuffix {
+    pub span: Span,
     pub type_arguments: Vec<Type>,
     pub value_arguments: Vec<ValueArgument>,
     pub annotated_lambda: Option<AnnotatedLambda>,

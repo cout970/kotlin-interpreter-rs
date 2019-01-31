@@ -1,3 +1,4 @@
+#!/bin/bash
 @file:Suppress("unused")
 
 external fun println(x: Any)
@@ -153,7 +154,13 @@ fun main() {
 
 
     true is Boolean
-    val a = 5
+    val obj = 5
+
+    operator fun String.invoke(vararg others: Int) {
+
+    }
+
+    ""(2,3,4)
 
 
     1 in listOf(1, 2, 3)

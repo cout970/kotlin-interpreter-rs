@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use crate::analyzer::ast::AstFile;
 use crate::analyzer::typechecker::collect_file_info::collect_file_info;
 use crate::analyzer::typechecker::compiler::compile_file;
+use crate::analyzer::typechecker::resolve_imports::resolve_imports;
 use crate::analyzer::typechecker::type_reference_getter::get_all_references_to_types;
+use crate::errors::KtError;
 use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
-use crate::analyzer::typechecker::resolve_imports::resolve_imports;
 
 mod type_reference_getter;
 mod collect_file_info;
@@ -60,9 +61,9 @@ pub struct CheckedFile {
 //
 //}
 
-pub fn check_types(mut files: Vec<CheckedFile>) {
+pub fn check_types(mut files: Vec<CheckedFile>) -> Vec<KtError>{
     let mut file_map: HashMap<String, FileInfo> = HashMap::new();
-
+    let mut errors = vec![];
     // Collect exposed names from files
     for file in &files {
         // TODO file path or package path?
@@ -71,8 +72,12 @@ pub fn check_types(mut files: Vec<CheckedFile>) {
 
     // Resolve type names from imports
     for file in &mut files {
-        resolve_imports(&file_map, &file.path, &mut file.ast)
+        for (span, info) in resolve_imports(&file_map, &file.path, &mut file.ast) {
+            errors.push(KtError::Analyser { code: file.code.clone(), span, info });
+        }
     }
+
+
 
     // Resolve global types
     // - Resolve function types
@@ -84,37 +89,39 @@ pub fn check_types(mut files: Vec<CheckedFile>) {
     // - Resolve abstract methods
 
     // Done?
+    errors
 }
 
-impl TypeChecker {
-    pub fn run(code: SourceCode, ast: &KotlinFile) {
-        let checker = TypeChecker {
-            types: HashMap::new(),
-            code,
-        };
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::assert_success;
 
+    #[test]
+    fn update_names(){
+        // https://markojerkic.com/algorithms-for-finding-a-list-of-prime-numbers-in-kotlin/
+        assert_success(r#"
+class Primes() {
 
-        let refs = get_all_references_to_types(ast);
+    fun getPrimesBrute(n: Int): ArrayList<Int> {
+        val result = ArrayList<Int>()
 
-//        collect_all_types_info(&mut checker.types, ast);
-
-//        compile_file(&mut checker, ast).unwrap();
-//        TypeResolver::resolve(&checker, &ast);
-
-        dbg!(refs);
-    }
-
-    pub fn get_class_info(&self, ty: &Type) -> Option<&ClassInfo> {
-        let info = self.types.get(&signature_of_type(ty))?;
-
-        match &info.kind {
-            Kind::Class(info) => Some(info),
-            Kind::Object(..) => None,
-            Kind::Function => None,
+        for (i in (2..n)) {
+            var t = true
+            for (j in 2..i-1) {
+                if (i % j == 0) {
+                    t = false
+                    break
+                }
+            }
+            if (t) result.add(i)
         }
+        return result
+    }
+
+}
+        "#);
     }
 }
-
 
 // OLD
 

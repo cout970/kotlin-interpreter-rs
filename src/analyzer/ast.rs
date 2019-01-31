@@ -178,6 +178,11 @@ pub enum AstExpr {
         function: String,
         args: Vec<AstExpr>,
     },
+    CallInvoke {
+        span: Span,
+        function: MutRc<AstExpr>,
+        args: Vec<AstExpr>,
+    },
     ReadField {
         span: Span,
         field: String,

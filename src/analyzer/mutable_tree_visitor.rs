@@ -2,7 +2,6 @@ use crate::analyzer::ast::*;
 
 type Func<'t, S, T> = &'t mut FnMut(&mut S, &mut T);
 
-#[derive(Default)]
 pub struct Visitor<'t, S> {
     pub pre_visit_file: Option<Func<'t, S, AstFile>>,
     pub post_visit_file: Option<Func<'t, S, AstFile>>,
@@ -33,6 +32,33 @@ pub struct Visitor<'t, S> {
 
     pub pre_visit_local_property: Option<Func<'t, S, AstLocalProperty>>,
     pub post_visit_local_property: Option<Func<'t, S, AstLocalProperty>>,
+}
+
+impl<'t, S> Default for Visitor<'t, S> {
+    fn default() -> Self {
+        Visitor {
+            pre_visit_file: None,
+            post_visit_file: None,
+            pre_visit_class: None,
+            post_visit_class: None,
+            pre_visit_property: None,
+            post_visit_property: None,
+            pre_visit_function: None,
+            post_visit_function: None,
+            pre_visit_typealias: None,
+            post_visit_typealias: None,
+            pre_visit_var: None,
+            post_visit_var: None,
+            pre_visit_type: None,
+            post_visit_type: None,
+            pre_visit_expr: None,
+            post_visit_expr: None,
+            pre_visit_statement: None,
+            post_visit_statement: None,
+            pre_visit_local_property: None,
+            post_visit_local_property: None,
+        }
+    }
 }
 
 pub fn visit_file<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstFile) {
@@ -189,6 +215,13 @@ pub fn visit_expr<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstExpr) {
         AstExpr::Constant { .. } => {}
         AstExpr::Ref { .. } => {}
         AstExpr::Call { args, .. } => {
+            for arg in args {
+                visit_expr(v, state, arg);
+            }
+        }
+        AstExpr::CallInvoke { args, function, .. } => {
+            visit_rc_expr(v, state, function);
+
             for arg in args {
                 visit_expr(v, state, arg);
             }

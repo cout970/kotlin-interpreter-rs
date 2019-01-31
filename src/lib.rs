@@ -24,7 +24,8 @@ mod test_utils;
 
 // Lang references:
 // - https://kotlinlang.org/docs/kotlin-docs.pdf
-// - https://kotlinlang.org/docs/reference/grammar.html
+// - https://kotlinlang.org/docs/reference/grammar.html (outdated)
+// - https://github.com/JetBrains/kotlin-spec/blob/spec-rework/src/grammar/KotlinParser.g4
 // - https://github.com/JetBrains/kotlin/blob/686cfa6fd29b8e096ea04a2b96e2dc08adced512/compiler/psi/src/org/jetbrains/kotlin/parsing/KotlinParsing.java
 // - https://play.kotlinlang.org
 

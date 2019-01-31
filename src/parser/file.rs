@@ -551,16 +551,17 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
         }
         Token::Dot => {
             s.next();
-            let next = read_expr_postfix_unary(s)?;
+            // TODO class or id
+            let member = s.expect_id()?;
 
-            ExprPostfix::MemberAccess { operator: String::from("."), next }
+            ExprPostfix::MemberAccess { operator: String::from("."), member }
         }
         Token::QuestionMark => {
             s.next();
             s.expect(Token::Dot)?;
-            let next = read_expr_postfix_unary(s)?;
+            let member = s.expect_id()?;
 
-            ExprPostfix::MemberAccess { operator: String::from("?."), next }
+            ExprPostfix::MemberAccess { operator: String::from("?."), member }
         }
         _ => {
             return s.make_error_expected_of(vec![
@@ -1595,6 +1596,9 @@ fn read_delegation_specifier_without_lambda(s: &mut TokenCursor) -> Result<Deleg
 }
 
 fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
+    // 1(2,3,4)
+    let start = s.start();
+
     let type_arguments = match s.read_token(0) {
         Token::LeftAngleBracket => read_type_arguments(s)?,
         _ => vec![]
@@ -1618,6 +1622,7 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
     };
 
     Ok(CallSuffix {
+        span: (start, s.end()),
         type_arguments,
         value_arguments,
         annotated_lambda,
@@ -1625,6 +1630,8 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
 }
 
 fn read_call_suffix_without_lambda(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
+    let start = s.start();
+
     let type_arguments = match s.read_token(0) {
         Token::LeftAngleBracket => read_type_arguments(s)?,
         _ => vec![]
@@ -1636,6 +1643,7 @@ fn read_call_suffix_without_lambda(s: &mut TokenCursor) -> Result<CallSuffix, Kt
     };
 
     Ok(CallSuffix {
+        span: (start, s.end()),
         type_arguments,
         value_arguments,
         annotated_lambda: None,
