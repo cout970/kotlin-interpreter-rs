@@ -5,11 +5,11 @@ use crate::analyzer::ast::*;
 use crate::analyzer::mutable_tree_visitor::visit_file;
 use crate::analyzer::mutable_tree_visitor::Visitor;
 use crate::analyzer::typechecker::CheckedFile;
-use crate::analyzer::typechecker::FileInfo;
+use crate::analyzer::typechecker::FileSymbols;
 use crate::errors::AnalyserError;
 use crate::source_code::Span;
 
-type Files = HashMap<String, FileInfo>;
+type Files = HashMap<String, FileSymbols>;
 
 struct Context<'t> {
     files: &'t Files,

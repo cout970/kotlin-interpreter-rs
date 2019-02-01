@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::interpreter::bytecode::Constant;
 use crate::source_code::Span;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstType {
     pub span: Span,
     // B
@@ -24,7 +24,7 @@ pub enum AstTypeParameter {
     Parameter(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstFile {
     pub package: String,
     pub imports: Vec<AstImport>,
@@ -34,7 +34,7 @@ pub struct AstFile {
     pub typealias: Vec<AstTypealias>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstTypealias {
     pub span: Span,
     pub name: String,
@@ -62,7 +62,7 @@ pub struct AstLocalProperty {
     pub expr: Option<AstExpr>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstProperty {
     pub span: Span,
     pub var: AstVar,
@@ -72,7 +72,7 @@ pub struct AstProperty {
     pub setter: Option<AstFunction>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstFunction {
     pub span: Span,
     pub extension: bool,
@@ -85,7 +85,7 @@ pub struct AstFunction {
     // TODO default parameters
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default)]
 pub struct AstClass {
     // visibility: ignored for now
     pub span: Span,
@@ -138,7 +138,7 @@ impl Default for AstInheritanceModifier {
     fn default() -> Self { AstInheritanceModifier::Final }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum AstStatement {
     Expr(AstExpr),
     Class(AstClass),
@@ -146,7 +146,7 @@ pub enum AstStatement {
     Property(AstLocalProperty),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum AstMember {
     Class(AstClass),
     Function(AstFunction),
@@ -159,7 +159,7 @@ pub fn mut_rc<T>(a: T) -> MutRc<T> {
     Rc::new(RefCell::new(a))
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum AstExpr {
     Block {
         span: Span,

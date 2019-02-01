@@ -1,14 +1,14 @@
 use crate::analyzer::ast::*;
-use crate::analyzer::typechecker::FileInfo;
+use crate::analyzer::typechecker::FileSymbols;
 
 struct Context {
-    info: FileInfo,
+    info: FileSymbols,
     package: String,
 }
 
-pub fn collect_file_info(ast: &AstFile) -> FileInfo {
+pub fn collect_file_symbols(ast: &AstFile) -> FileSymbols {
     let mut ctx = Context {
-        info: FileInfo::new(),
+        info: FileSymbols::new(),
         package: ast.package.clone(),
     };
 

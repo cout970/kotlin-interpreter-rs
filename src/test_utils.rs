@@ -2,6 +2,8 @@ use crate::parser::Parser;
 use crate::source_code::from_str;
 use crate::tokenizer::Tokenizer;
 use crate::analyzer::tree_to_ast::file_to_ast;
+use crate::analyzer::typechecker::check_types;
+use crate::analyzer::typechecker::CheckedFile;
 
 pub fn assert_fails(code: &str) {
     let code = from_str(code);
@@ -38,8 +40,8 @@ pub fn assert_success(code: &str){
     let mut parser = Parser::new(code.clone(), tokens);
     let file = parser.parse_file().unwrap();
 
-    let (ast, errors) = file_to_ast(code, &file);
-    dbg!(ast);
+    let (ast, errors) = file_to_ast(code.clone(), &file);
+    let ast = dbg!(ast);
     println!("\n\n");
 
     for x in &errors {
@@ -47,4 +49,10 @@ pub fn assert_success(code: &str){
     }
 
     assert_eq!(errors.len(), 0);
+
+    check_types(vec![CheckedFile{
+        path: "<builtin>".to_string(),
+        code: code.clone(),
+        ast
+    }]);
 }
