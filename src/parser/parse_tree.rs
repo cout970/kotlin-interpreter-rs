@@ -38,7 +38,7 @@ pub struct Annotation {
     pub span: Span,
     pub names: Path,
     pub use_site_target: Option<String>,
-    pub type_arguments: Vec<Type>,
+    pub type_arguments: Vec<CallSiteTypeParams>,
     pub value_arguments: Vec<ValueArgument>,
 }
 
@@ -223,7 +223,7 @@ pub enum Expr {
     CallableRef {
         name: String,
         ty: UserType,
-        type_arguments: Vec<Type>,
+        type_arguments: Vec<CallSiteTypeParams>,
     },
     Lambda(FunctionLiteral),
     Ref(String),
@@ -498,7 +498,7 @@ pub enum DelegationSpecifier {
 #[derive(Clone, PartialEq, Debug)]
 pub struct CallSuffix {
     pub span: Span,
-    pub type_arguments: Vec<Type>,
+    pub type_arguments: Vec<CallSiteTypeParams>,
     pub value_arguments: Vec<ValueArgument>,
     pub annotated_lambda: Option<AnnotatedLambda>,
 }

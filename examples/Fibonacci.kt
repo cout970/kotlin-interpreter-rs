@@ -160,7 +160,13 @@ fun main() {
 
     }
 
-    ""(2,3,4)
+    ""(2, 3, 4)
+
+
+    fun <T> t(arg: T): String {
+        return "T"
+    }
+//    t<*>(0)
 
 
     1 in listOf(1, 2, 3)

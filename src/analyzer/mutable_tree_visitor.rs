@@ -214,13 +214,13 @@ pub fn visit_expr<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstExpr) {
         }
         AstExpr::Constant { .. } => {}
         AstExpr::Ref { .. } => {}
-        AstExpr::Call { args, .. } => {
+        AstExpr::InvokeStatic { args, .. } => {
             for arg in args {
                 visit_expr(v, state, arg);
             }
         }
-        AstExpr::CallInvoke { args, function, .. } => {
-            visit_rc_expr(v, state, function);
+        AstExpr::InvokeDynamic { args, obj, .. } => {
+            visit_rc_expr(v, state, obj);
 
             for arg in args {
                 visit_expr(v, state, arg);

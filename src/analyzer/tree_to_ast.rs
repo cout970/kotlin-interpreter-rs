@@ -775,7 +775,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                         AstStatement::Expr(AstExpr::WriteRef {
                             span,
                             name: variable.to_owned(),
-                            expr: mut_rc(AstExpr::Call {
+                            expr: mut_rc(AstExpr::InvokeStatic {
                                 span,
                                 function: new_name.to_owned(),
                                 args: vec![
@@ -795,9 +795,9 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                 };
             }
             ExprPostfix::AssertNonNull => {
-                ast = AstExpr::Call {
+                ast = AstExpr::InvokeStatic {
                     span,
-                    function: "assertNonNull".to_owned(),
+                    function: "Intrinsics.assertNonNull".to_owned(),
                     args: vec![ast],
                 };
             }
@@ -806,34 +806,48 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                     .map(|it| expr_to_ast(ctx, it))
                     .collect();
 
-                ast = AstExpr::Call {
+                ast = AstExpr::InvokeStatic {
                     span,
                     function: "get".to_owned(),
                     args: create_vec(ast, args),
                 };
             }
             ExprPostfix::FunCall(suffix) => {
-
                 let mut args = vec![];
+                let mut type_parameters = vec![];
 
                 // TODO named arguments
                 for x in &suffix.value_arguments {
                     args.push(expr_to_ast(ctx, &x.expr));
                 }
+                for x in &suffix.type_arguments {
+                    // TODO projection not allowed
+                    type_parameters.push(type_parameter_to_ast(ctx, x));
+                }
 
-                ast = AstExpr::CallInvoke {
-                    span: (span.0, suffix.span.1),
-                    function: mut_rc(ast),
-                    args,
-                };
-                // TODO identify function by type parameters?
+                if let AstExpr::Ref { name, .. } = &ast {
+                    // TODO not exactly InvokeStatic, could be using this as receiver
+                    ast = AstExpr::InvokeStatic {
+                        span: (span.0, suffix.span.1),
+                        function: name.to_string(),
+                        args,
+                    };
+                } else {
+                    ast = AstExpr::InvokeDynamic {
+                        span: (span.0, suffix.span.1),
+                        obj: mut_rc(ast),
+                        function: "invoke".to_string(),
+                        type_parameters,
+                        args,
+                    };
+                }
             }
-            ExprPostfix::MemberAccess { operator, member,.. } => {
+            ExprPostfix::MemberAccess { operator, member, .. } => {
                 // TODO operator: . ?.
                 ast = AstExpr::ReadField {
                     span,
                     field: member.to_owned(),
-                    object: mut_rc(ast)
+                    object: mut_rc(ast),
                 };
             }
         }
@@ -868,7 +882,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
             AstExpr::WriteRef {
                 span,
                 name: variable.to_owned(),
-                expr: mut_rc(AstExpr::Call {
+                expr: mut_rc(AstExpr::InvokeStatic {
                     span,
                     function: new_name.to_owned(),
                     args: vec![
@@ -889,7 +903,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
             };
 
             let e = expr_to_ast(ctx, expr);
-            AstExpr::Call {
+            AstExpr::InvokeStatic {
                 span,
                 function: new_name.to_owned(),
                 args: vec![e],
@@ -911,7 +925,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
                 });
             }
             StringComponent::Variable(name) => {
-                str_expr.push(AstExpr::Call {
+                str_expr.push(AstExpr::InvokeStatic {
                     span,
                     function: "toString".to_owned(),
                     args: vec![
@@ -923,7 +937,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
                 });
             }
             StringComponent::Template(expr) => {
-                str_expr.push(AstExpr::Call {
+                str_expr.push(AstExpr::InvokeStatic {
                     span,
                     function: "toString".to_owned(),
                     args: vec![expr_to_ast(ctx, expr)],
@@ -937,7 +951,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
     let mut ast = iter.next().unwrap();
 
     for p in iter {
-        ast = AstExpr::Call {
+        ast = AstExpr::InvokeStatic {
             span,
             function: "plus".to_string(),
             args: vec![ast, p],
@@ -978,7 +992,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     else_value = Some(mut_rc(block_to_ast(ctx, &entry.body)))
                 }
                 WhenCondition::Expr(cond) => {
-                    let cmp = AstExpr::Call {
+                    let cmp = AstExpr::InvokeStatic {
                         span,
                         function: "equals".to_owned(),
                         args: vec![expr.clone(), expr_to_ast(ctx, cond)],
@@ -986,14 +1000,14 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     pairs.push((cmp, block_to_ast(ctx, &entry.body)));
                 }
                 WhenCondition::In { negated, expr: range } => {
-                    let mut cmp = AstExpr::Call {
+                    let mut cmp = AstExpr::InvokeStatic {
                         span,
                         function: "contains".to_owned(),
                         args: vec![expr.clone(), expr_to_ast(ctx, range)],
                     };
 
                     if *negated {
-                        cmp = AstExpr::Call {
+                        cmp = AstExpr::InvokeStatic {
                             span,
                             function: "not".to_owned(),
                             args: vec![cmp],
@@ -1009,7 +1023,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     };
 
                     if *negated {
-                        cmp = AstExpr::Call {
+                        cmp = AstExpr::InvokeStatic {
                             span,
                             function: "not".to_owned(),
                             args: vec![cmp],
@@ -1137,18 +1151,22 @@ fn simple_user_type_to_ast(ctx: &mut Context, span: Span, ty: &Vec<SimpleUserTyp
     }
 
     for x in &last.type_params {
-        type_parameters.push(match x {
-            CallSiteTypeParams::Projection => AstTypeParameter::Projection,
-            CallSiteTypeParams::Type(ty) => AstTypeParameter::Type(type_to_ast(ctx, ty)),
-        });
+        type_parameters.push(type_parameter_to_ast(ctx, x));
     }
 
     AstType {
         span,
         name: last.name.to_owned(),
-        full_name: "kotlin.Function".to_string(),
+        full_name,
         type_parameters,
         nullable: false,
+    }
+}
+
+fn type_parameter_to_ast(ctx: &mut Context, ty: &CallSiteTypeParams) -> AstTypeParameter {
+    match ty {
+        CallSiteTypeParams::Projection => AstTypeParameter::Projection,
+        CallSiteTypeParams::Type(ty) => AstTypeParameter::Type(type_to_ast(ctx, ty)),
     }
 }
 
@@ -1188,7 +1206,7 @@ fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Ve
             let next = expr_to_ast(ctx, expr);
             let span = (get_span(&tree).0, (expr.0).1);
 
-            tree = AstExpr::Call {
+            tree = AstExpr::InvokeStatic {
                 span,
                 function: op.to_owned(),
                 args: vec![tree, next],
@@ -1204,8 +1222,8 @@ fn get_span(expr: &AstExpr) -> Span {
         AstExpr::Block { span, .. } => *span,
         AstExpr::Constant { span, .. } => *span,
         AstExpr::Ref { span, .. } => *span,
-        AstExpr::Call { span, .. } => *span,
-        AstExpr::CallInvoke { span, .. } => *span,
+        AstExpr::InvokeStatic { span, .. } => *span,
+        AstExpr::InvokeDynamic { span, .. } => *span,
         AstExpr::ReadField { span, .. } => *span,
         AstExpr::WriteRef { span, .. } => *span,
         AstExpr::Is { span, .. } => *span,

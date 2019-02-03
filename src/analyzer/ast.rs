@@ -48,14 +48,14 @@ pub struct AstImport {
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstVar {
     pub name: String,
     pub ty: Option<AstType>,
     pub mutable: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct AstLocalProperty {
     pub vars: Vec<AstVar>,
     pub delegated: bool,
@@ -173,14 +173,16 @@ pub enum AstExpr {
         span: Span,
         name: String,
     },
-    Call {
+    InvokeStatic {
         span: Span,
         function: String,
         args: Vec<AstExpr>,
     },
-    CallInvoke {
+    InvokeDynamic {
         span: Span,
-        function: MutRc<AstExpr>,
+        obj: MutRc<AstExpr>,
+        function: String,
+        type_parameters: Vec<AstTypeParameter>,
         args: Vec<AstExpr>,
     },
     ReadField {

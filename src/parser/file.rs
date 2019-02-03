@@ -1684,9 +1684,9 @@ fn read_function_literal(s: &mut TokenCursor) -> Result<FunctionLiteral, KtError
     Ok(FunctionLiteral { parameters, statements })
 }
 
-fn read_type_arguments(s: &mut TokenCursor) -> Result<Vec<Type>, KtError> {
+fn read_type_arguments(s: &mut TokenCursor) -> Result<Vec<CallSiteTypeParams>, KtError> {
     s.expect(Token::LeftAngleBracket)?;
-    let types = s.separated_by(Token::Comma, &read_type)?;
+    let types = s.separated_by(Token::Comma, &read_call_site_type_params)?;
     s.expect(Token::RightAngleBracket)?;
     Ok(types)
 }

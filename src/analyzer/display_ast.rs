@@ -6,7 +6,28 @@ use std::fmt::Formatter;
 use crate::analyzer::ast::*;
 
 impl Debug for AstFile {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let string = format!("{}", self);
+        let mut ret = String::new();
+        let mut indent = 0;
+
+        for c in string.chars() {
+            ret.push(c);
+            if c == '{' {
+                indent += 1;
+            } else if c == '}' {
+                indent -= 1;
+            } else if c == '\n' {
+                for _ in 0..indent {
+                    ret.push(' ');
+                    ret.push(' ');
+                }
+            }
+        }
+
+        write!(f, "{}", ret)?;
+        Ok(())
+    }
 }
 
 impl Debug for AstClass {
@@ -34,6 +55,14 @@ impl Debug for AstExpr {
 }
 
 impl Debug for AstProperty {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
+}
+
+impl Debug for AstLocalProperty {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
+}
+
+impl Debug for AstVar {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
 }
 
@@ -183,6 +212,32 @@ impl Display for AstProperty {
     }
 }
 
+impl Display for AstLocalProperty {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "val ")?;
+
+        if self.vars.len() == 1 {
+            write!(f, "{:?} ", self.vars.first().unwrap())?;
+        } else {
+            write!(f, "(")?;
+            for x in &self.vars {
+                write!(f, "{:?} ", x)?;
+            }
+            write!(f, ") ")?;
+        }
+
+        if let Some(it) = &self.expr {
+            if self.delegated {
+                write!(f, "by")?;
+            } else {
+                write!(f, "=")?;
+            }
+            write!(f, " {:?} ", it)?;
+        }
+        Ok(())
+    }
+}
+
 impl Display for AstType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.full_name)?;
@@ -220,25 +275,37 @@ impl Display for AstExpr {
             AstExpr::Ref { name, .. } => {
                 write!(f, "{}", name)?;
             }
-            AstExpr::Call { function, args, .. } => {
+            AstExpr::InvokeStatic { function, args, .. } => {
                 write!(f, "{}(", function)?;
                 for e in args {
                     write!(f, "{:?} ", e)?;
                 }
                 write!(f, ")")?;
             }
-            AstExpr::CallInvoke { function, args, .. } => {
-                write!(f, "{:?}(", function.borrow())?;
+            AstExpr::InvokeDynamic { obj, function, type_parameters, args, .. } => {
+                write!(f, "({:?}).{}", obj.borrow(), function)?;
+                if !type_parameters.is_empty() {
+                    write!(f, "<")?;
+                    for param in type_parameters {
+                        match param {
+                            AstTypeParameter::Type(ty) => { write!(f, " {}", ty)?; }
+                            AstTypeParameter::Projection => { write!(f, " *")?; }
+                            AstTypeParameter::Parameter(p) => { write!(f, " {}", p)?; }
+                        }
+                    }
+                    write!(f, " >")?;
+                }
+                write!(f, "( ")?;
                 for e in args {
                     write!(f, "{:?} ", e)?;
                 }
                 write!(f, ")")?;
             }
             AstExpr::ReadField { field, object, .. } => {
-                write!(f, "{:?}.{:?}", object.borrow(), field)?;
+                write!(f, "{:?}.{}", object.borrow(), field)?;
             }
             AstExpr::WriteRef { name, expr, .. } => {
-                write!(f, "{:?} = {:?}", name, expr.borrow())?;
+                write!(f, "{} = {:?}", name, expr.borrow())?;
             }
             AstExpr::Is { expr, ty, .. } => {
                 write!(f, "{:?} is {:?}", expr.borrow(), ty)?;
@@ -295,12 +362,22 @@ impl Display for AstExpr {
 
 impl Display for AstStatement {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        PadAdapter::wrap(&mut f.fmt, &mut slot);
         match self {
-            AstStatement::Expr(it) => { write!(f, "{:#?}", it)?; },
-            AstStatement::Class(it) => { write!(f, "{:#?}", it)?; },
-            AstStatement::Function(it) => { write!(f, "{:#?}", it)?; },
-            AstStatement::Property(it) => { write!(f, "{:#?}", it)?; },
+            AstStatement::Expr(it) => { write!(f, "{:#?}", it)?; }
+            AstStatement::Class(it) => { write!(f, "{:#?}", it)?; }
+            AstStatement::Function(it) => { write!(f, "{:#?}", it)?; }
+            AstStatement::Property(it) => { write!(f, "{:#?}", it)?; }
+        }
+        Ok(())
+    }
+}
+
+impl Display for AstVar {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{}", self.name)?;
+
+        if let Some(ty) = &self.ty {
+            write!(f, ": {:?}", ty);
         }
         Ok(())
     }
