@@ -2,6 +2,7 @@ use lazy_static::*;
 
 use crate::analyzer::ast::*;
 use crate::analyzer::modifiers::check_modifiers;
+use crate::analyzer::type_parameters::check_type_parameters;
 use crate::create_vec;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
@@ -56,6 +57,10 @@ impl Context {
 
     fn check_modifiers(&mut self, span: Span, modifiers: &Vec<Modifier>, target: ModifierTarget) {
         self.add_errors(span, check_modifiers(modifiers, *self.modifier_ctx.last().unwrap(), target));
+    }
+
+    fn check_type_parameters(&mut self, span: Span, params: &Vec<TypeParameter>, constraints: &Vec<TypeConstraint>) {
+        self.add_errors(span, check_type_parameters(params, constraints));
     }
 }
 
@@ -155,23 +160,8 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
 
 fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Class);
+    ctx.check_type_parameters(class.span, &class.type_parameters, &class.type_constraints);
     let mut body = vec![];
-
-    ctx.env_type.push(EnvType::Class);
-    ctx.modifier_ctx.push(ModifierCtx::ClassMember);
-
-    if let Some(b) = &class.body {
-        for member in &b.members {
-            body.push(member_to_ast(ctx, member))
-        }
-
-        if class.class_type == ClassType::Enum {
-            enum_entries_to_ast(ctx, class.span, b, &mut body);
-        }
-    }
-
-    ctx.modifier_ctx.pop().unwrap();
-    ctx.env_type.pop().unwrap();
 
     let inner = class.modifiers.contains(&Modifier::Inner);
 
@@ -193,6 +183,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
         ClassType::Enum => AstClassType::Enum,
         ClassType::Annotation => AstClassType::Annotation,
     };
+
 
     let inheritance_modifier = if class.modifiers.contains(&Modifier::Open) {
         AstInheritanceModifier::Open
@@ -224,6 +215,26 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
             }
         }
     }
+
+    ctx.env_type.push(EnvType::Class);
+    ctx.modifier_ctx.push(ModifierCtx::ClassMember);
+
+    if let Some(b) = &class.body {
+        for member in &b.members {
+            body.push(member_to_ast(ctx, member))
+        }
+
+        if class.class_type == ClassType::Enum {
+            enum_entries_to_ast(ctx, class.span, b, &mut body);
+        }
+    } else if class_type == AstClassType::Enum {
+        ctx.new_error(class.span, AnalyserError::EnumWithoutBody);
+    }
+
+    ctx.modifier_ctx.pop().unwrap();
+    ctx.env_type.pop().unwrap();
+
+    // TODO duplicated interfaces?
 
     AstClass {
         span: class.span,
@@ -280,6 +291,10 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
     ctx.check_modifiers(class.span, &class.modifiers, ModifierTarget::Object);
     let mut body = vec![];
 
+    if class.primary_constructor.is_some() {
+        ctx.new_error(class.span, AnalyserError::ObjectWithConstructor)
+    }
+
     ctx.env_type.push(EnvType::Class);
     ctx.modifier_ctx.push(ModifierCtx::ClassMember);
 
@@ -312,6 +327,8 @@ fn object_to_ast(ctx: &mut Context, class: &Object) -> AstClass {
             }
         }
     }
+
+    // TODO duplicated interfaces?
 
     AstClass {
         span: class.span,
@@ -356,6 +373,7 @@ fn member_to_ast(ctx: &mut Context, member: &Member) -> AstMember {
 
 fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
     ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
+    ctx.check_type_parameters(prop.span, &prop.type_parameters, &prop.type_constraints);
 
     ctx.env_type.push(EnvType::Statement);
     let (delegated, expr) = match &prop.initialization {
@@ -441,6 +459,7 @@ fn property_to_ast(ctx: &mut Context, prop: &Property) -> AstProperty {
 
 fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
     ctx.check_modifiers(fun.span, &fun.modifiers, ModifierTarget::Function);
+    ctx.check_type_parameters(fun.span, &fun.type_parameters, &fun.type_constraints);
 
     let body = function_body_to_ast(ctx, &fun.body);
     let member = *ctx.env_type.last().unwrap() == EnvType::Class;
@@ -455,9 +474,23 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
         });
     }
 
+    let mut vararg = false;
     for param in &fun.value_parameters {
         if param.mutability != ParameterMutability::Default {
             ctx.new_error(fun.span, AnalyserError::FunctionParameterInvalidMutability)
+        }
+
+        if args.iter().any(|it| it.name == param.name) {
+            ctx.new_error(fun.span, AnalyserError::DuplicatedFunctionParameter {
+                param: param.name.to_owned()
+            });
+        }
+
+        if param.modifiers.contains(&Modifier::Vararg) {
+            if vararg {
+                ctx.new_error(fun.span, AnalyserError::MultipleVarargs);
+            }
+            vararg = true;
         }
 
         args.push(AstVar {
@@ -465,6 +498,7 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
             ty: Some(type_to_ast(ctx, &param.ty)),
             mutable: false,
         });
+
         // TODO this should be in the function's block code
 //        param.default_value
     }
@@ -560,6 +594,8 @@ fn function_body_to_ast(ctx: &mut Context, body: &Option<FunctionBody>) -> Optio
 
 fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
     ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
+    ctx.check_type_parameters(prop.span, &prop.type_parameters, &prop.type_constraints);
+
     let (delegated, expr) = match &prop.initialization {
         PropertyInitialization::None => (false, None),
         PropertyInitialization::Expr(expr) => (false, Some(expr_to_ast(ctx, expr))),
@@ -778,6 +814,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                             expr: mut_rc(AstExpr::InvokeStatic {
                                 span,
                                 function: new_name.to_owned(),
+                                type_parameters: vec![],
                                 args: vec![
                                     AstExpr::Ref {
                                         span,
@@ -798,6 +835,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                 ast = AstExpr::InvokeStatic {
                     span,
                     function: "Intrinsics.assertNonNull".to_owned(),
+                    type_parameters: vec![],
                     args: vec![ast],
                 };
             }
@@ -809,6 +847,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                 ast = AstExpr::InvokeStatic {
                     span,
                     function: "get".to_owned(),
+                    type_parameters: vec![],
                     args: create_vec(ast, args),
                 };
             }
@@ -826,10 +865,11 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                 }
 
                 if let AstExpr::Ref { name, .. } = &ast {
-                    // TODO not exactly InvokeStatic, could be using this as receiver
+                    // TODO not exactly InvokeStatic, could be using 'this' as receiver
                     ast = AstExpr::InvokeStatic {
                         span: (span.0, suffix.span.1),
                         function: name.to_string(),
+                        type_parameters,
                         args,
                     };
                 } else {
@@ -842,7 +882,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                     };
                 }
             }
-            ExprPostfix::MemberAccess { operator, member, .. } => {
+            ExprPostfix::MemberAccess { member, .. } => {
                 // TODO operator: . ?.
                 ast = AstExpr::ReadField {
                     span,
@@ -885,6 +925,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
                 expr: mut_rc(AstExpr::InvokeStatic {
                     span,
                     function: new_name.to_owned(),
+                    type_parameters: vec![],
                     args: vec![
                         AstExpr::Ref {
                             span,
@@ -906,6 +947,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
             AstExpr::InvokeStatic {
                 span,
                 function: new_name.to_owned(),
+                type_parameters: vec![],
                 args: vec![e],
             }
         }
@@ -928,6 +970,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
                 str_expr.push(AstExpr::InvokeStatic {
                     span,
                     function: "toString".to_owned(),
+                    type_parameters: vec![],
                     args: vec![
                         AstExpr::Ref {
                             span,
@@ -940,6 +983,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
                 str_expr.push(AstExpr::InvokeStatic {
                     span,
                     function: "toString".to_owned(),
+                    type_parameters: vec![],
                     args: vec![expr_to_ast(ctx, expr)],
                 });
             }
@@ -954,6 +998,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
         ast = AstExpr::InvokeStatic {
             span,
             function: "plus".to_string(),
+            type_parameters: vec![],
             args: vec![ast, p],
         }
     }
@@ -995,6 +1040,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     let cmp = AstExpr::InvokeStatic {
                         span,
                         function: "equals".to_owned(),
+                        type_parameters: vec![],
                         args: vec![expr.clone(), expr_to_ast(ctx, cond)],
                     };
                     pairs.push((cmp, block_to_ast(ctx, &entry.body)));
@@ -1003,6 +1049,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                     let mut cmp = AstExpr::InvokeStatic {
                         span,
                         function: "contains".to_owned(),
+                        type_parameters: vec![],
                         args: vec![expr.clone(), expr_to_ast(ctx, range)],
                     };
 
@@ -1010,6 +1057,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                         cmp = AstExpr::InvokeStatic {
                             span,
                             function: "not".to_owned(),
+                            type_parameters: vec![],
                             args: vec![cmp],
                         }
                     }
@@ -1026,6 +1074,7 @@ fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, en
                         cmp = AstExpr::InvokeStatic {
                             span,
                             function: "not".to_owned(),
+                            type_parameters: vec![],
                             args: vec![cmp],
                         }
                     }
@@ -1209,6 +1258,7 @@ fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Ve
             tree = AstExpr::InvokeStatic {
                 span,
                 function: op.to_owned(),
+                type_parameters: vec![],
                 args: vec![tree, next],
             }
         }

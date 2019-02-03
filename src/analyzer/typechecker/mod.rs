@@ -113,7 +113,6 @@ class Primes() {
         }
         return result
     }
-
 }
         "#);
     }

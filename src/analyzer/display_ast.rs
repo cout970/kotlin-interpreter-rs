@@ -78,7 +78,7 @@ impl Display for AstFile {
         for x in &self.imports {
             write!(f, "import {}", x.name)?;
             if let Some(it) = &x.alias {
-                write!(f, " as {}", x.name)?;
+                write!(f, " as {}", it)?;
             }
             write!(f, "\n")?;
         }
@@ -199,7 +199,12 @@ impl Display for AstFunction {
 
 impl Display for AstProperty {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "val {:?} ", self.var)?;
+        if self.var.mutable {
+            write!(f, "var")?;
+        } else {
+            write!(f, "val")?;
+        }
+        write!(f, " {:?} ", self.var)?;
         if let Some(it) = &self.expr {
             if self.delegated {
                 write!(f, "by")?;
@@ -214,12 +219,16 @@ impl Display for AstProperty {
 
 impl Display for AstLocalProperty {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "val ")?;
+        if self.vars.first().unwrap().mutable {
+            write!(f, "var")?;
+        } else {
+            write!(f, "val")?;
+        }
 
         if self.vars.len() == 1 {
-            write!(f, "{:?} ", self.vars.first().unwrap())?;
+            write!(f, " {:?} ", self.vars.first().unwrap())?;
         } else {
-            write!(f, "(")?;
+            write!(f, " (")?;
             for x in &self.vars {
                 write!(f, "{:?} ", x)?;
             }
@@ -242,7 +251,7 @@ impl Display for AstType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.full_name)?;
         if !self.type_parameters.is_empty() {
-            write!(f, "<")?;
+            write!(f, "< ")?;
             for param in &self.type_parameters {
                 match param {
                     AstTypeParameter::Type(ty) => { write!(f, "{} ", ty)?; }
@@ -275,8 +284,20 @@ impl Display for AstExpr {
             AstExpr::Ref { name, .. } => {
                 write!(f, "{}", name)?;
             }
-            AstExpr::InvokeStatic { function, args, .. } => {
-                write!(f, "{}(", function)?;
+            AstExpr::InvokeStatic { function, type_parameters, args, .. } => {
+                write!(f, "{}", function)?;
+                if !type_parameters.is_empty() {
+                    write!(f, "<")?;
+                    for param in type_parameters {
+                        match param {
+                            AstTypeParameter::Type(ty) => { write!(f, " {}", ty)?; }
+                            AstTypeParameter::Projection => { write!(f, " *")?; }
+                            AstTypeParameter::Parameter(p) => { write!(f, " {}", p)?; }
+                        }
+                    }
+                    write!(f, " >")?;
+                }
+                write!(f, "( ")?;
                 for e in args {
                     write!(f, "{:?} ", e)?;
                 }
@@ -377,7 +398,7 @@ impl Display for AstVar {
         write!(f, "{}", self.name)?;
 
         if let Some(ty) = &self.ty {
-            write!(f, ": {:?}", ty);
+            write!(f, ": {:?}", ty)?;
         }
         Ok(())
     }

@@ -40,6 +40,9 @@ pub enum AnalyserError {
     MutuallyExclusiveModifier { modifier_1: Modifier, modifier_2: Modifier },
     InvalidModifier { modifier: Modifier, context: ModifierCtx },
     ConflictingImport { name: String },
+    DuplicatedTypeParameter { param: String },
+    UnknownTypeParameter { param: String },
+    DuplicatedFunctionParameter { param: String },
     MultipleInheritance,
     ExtendingNonClass,
     ExtendingFinalClass,
@@ -58,6 +61,10 @@ pub enum AnalyserError {
     DestructuringInTopLevel,
     InvalidInnerClass,
     UnresolvedReference(String),
+    TypeConstrainsNotAllowed,
+    EnumWithoutBody,
+    ObjectWithConstructor,
+    MultipleVarargs,
 }
 
 #[derive(Debug, Clone)]

@@ -176,6 +176,7 @@ pub enum AstExpr {
     InvokeStatic {
         span: Span,
         function: String,
+        type_parameters: Vec<AstTypeParameter>,
         args: Vec<AstExpr>,
     },
     InvokeDynamic {

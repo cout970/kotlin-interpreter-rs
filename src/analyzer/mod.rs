@@ -5,6 +5,7 @@ pub mod tree_to_ast;
 mod modifiers;
 mod mutable_tree_visitor;
 mod display_ast;
+mod type_parameters;
 
 #[cfg(test)]
 mod tests {

@@ -202,6 +202,14 @@ object TestinObj : Testing({}) {
 }
 
 
+fun <A, T> T.list(): A where T : A {
+    TODO()
+}
+
+fun TODO(): Nothing {
+    throw Throwable()
+}
+
 object B {
 
 }
