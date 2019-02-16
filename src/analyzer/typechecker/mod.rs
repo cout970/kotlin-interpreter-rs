@@ -10,8 +10,8 @@ use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
 
 mod collect_file_symbols;
-//mod compiler;
 mod resolve_imports;
+mod compiler;
 
 pub struct TypeChecker {
     code: SourceCode,
@@ -57,9 +57,49 @@ pub struct CheckedFile {
 //
 //}
 
-pub fn check_types(mut files: Vec<CheckedFile>) -> Vec<KtError>{
+#[derive(Default)]
+pub struct GlobalEnv {
+    pub types: HashMap<String, TypeInfo>,
+    pub functions: HashMap<String, TypeInfo>,
+    pub properties: HashMap<String, TypeInfo>,
+}
+
+pub struct TypeInfo {
+    pub name: String,
+    pub package: String,
+    pub file: String,
+    pub object: bool,
+    pub super_type: String,
+    pub interfaces: Vec<String>,
+    pub signature: String,
+
+    // TODO inner classes
+    pub functions: Vec<FunctionInfo>,
+    pub properties: Vec<PropertyInfo>,
+}
+
+pub struct FunctionInfo {
+    pub name: String,
+    pub location: String,
+    pub package: String,
+    pub file: String,
+    pub signature: String,
+}
+
+pub struct PropertyInfo {
+    pub name: String,
+    pub location: String,
+    pub package: String,
+    pub file: String,
+    pub signature: String,
+}
+
+
+pub fn check_types(mut files: Vec<CheckedFile>) -> (Vec<CheckedFile>, Vec<KtError>) {
     let mut file_map: HashMap<String, FileSymbols> = HashMap::new();
     let mut errors = vec![];
+    let mut env = GlobalEnv::default();
+
     // Collect exposed names from files
     for file in &files {
         // TODO file path or package path?
@@ -73,11 +113,11 @@ pub fn check_types(mut files: Vec<CheckedFile>) -> Vec<KtError>{
         }
     }
 
-
-
     // Resolve global types
+
     // - Resolve function types
     // - Resolve property types
+    //instance methods for env?
 
     // Resolve local types
     // - Resolve function inferred return
@@ -85,7 +125,7 @@ pub fn check_types(mut files: Vec<CheckedFile>) -> Vec<KtError>{
     // - Resolve abstract methods
 
     // Done?
-    errors
+    (files, errors)
 }
 
 #[cfg(test)]
@@ -93,7 +133,8 @@ mod tests {
     use crate::test_utils::assert_success;
 
     #[test]
-    fn update_names(){
+    #[ignore]
+    fn update_names() {
         // https://markojerkic.com/algorithms-for-finding-a-list-of-prime-numbers-in-kotlin/
         assert_success(r#"
 class Primes() {

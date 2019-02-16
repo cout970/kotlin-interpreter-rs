@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 itertools = "0.8.0"
 lazy_static = "1.2.0"
+rand = "0.6.5"
 
 [dev-dependencies]
 pretty_assertions = "*"

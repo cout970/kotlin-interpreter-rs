@@ -1,6 +1,9 @@
 #!/bin/bash
 @file:Suppress("unused")
 
+import TestinObj.A.B
+import TestinObj.A
+
 external fun println(x: Any)
 external fun <T> listOf(vararg value: T): List<T>
 
@@ -11,6 +14,10 @@ fun main(args: Array<String>) {
 
 //    val a: collections.BooleanIterator? = null
 //    val b: BooleanIterator? = null
+}
+
+fun t(vararg a : Int, b: Float){
+
 }
 
 fun fibonacci(x: Int): Int = when (x) {
@@ -36,10 +43,6 @@ fun test() {
     inline fun <reified T> T.test() = T::class
 
     0.test()
-}
-
-class A {
-
 }
 
 var test: Int
@@ -196,13 +199,23 @@ open class Testing(func: () -> Unit) : MyClass(func) {
 // class MyList<T> : ArrayList<T> { 1 + 2 } { val age = 5 }
 
 object TestinObj : Testing({}) {
-    init {
 
+    object A {
+        object B {
+            init {
+
+            }
+
+            fun t(){
+
+            }
+        }
     }
 }
 
 
-fun <A, T> T.list(): A where T : A {
+fun <C, T> T.list(): C where T : C {
+    A.B.t()
     TODO()
 }
 

@@ -56,3 +56,33 @@ pub fn assert_success(code: &str){
         ast
     }]);
 }
+
+pub fn assert_correct_ast(code: &str) -> CheckedFile {
+    let code = from_str(code);
+
+    let ref mut tokenizer = Tokenizer::new(code.clone());
+    let tokens = tokenizer.read_tokens().unwrap();
+
+    let mut parser = Parser::new(code.clone(), tokens);
+    let file = parser.parse_file().unwrap();
+
+    let (ast, errors) = file_to_ast(code.clone(), &file);
+    let ast = dbg!(ast);
+    println!("\n\n");
+
+    for x in &errors {
+        println!("{:?}", x);
+    }
+
+    assert_eq!(errors.len(), 0);
+
+    let (list, errors) = check_types(vec![CheckedFile{
+        path: "<builtin>".to_string(),
+        code: code.clone(),
+        ast
+    }]);
+
+    assert_eq!(errors.len(), 0);
+
+    return list.into_iter().next().unwrap();
+}

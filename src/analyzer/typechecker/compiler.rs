@@ -11,6 +11,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use itertools::Itertools;
+use rand::Rng;
+
+use crate::analyzer::ast::*;
 use crate::analyzer::typechecker::TypeChecker;
 use crate::analyzer::typechecker::TypeInfo;
 use crate::errors::AnalyserError;
@@ -23,25 +27,13 @@ use crate::interpreter::bytecode::CompiledFunction;
 use crate::interpreter::bytecode::Constant;
 use crate::interpreter::bytecode::Instruction;
 use crate::Number;
-use crate::parser::parse_tree::Class;
-use crate::parser::parse_tree::ClassType;
-use crate::parser::parse_tree::DelegationSpecifier;
-use crate::parser::parse_tree::Expr;
-use crate::parser::parse_tree::KotlinFile;
-use crate::parser::parse_tree::TopLevelObject;
-use crate::parser::parse_tree::Type;
+use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
-
-struct Context {
-    file: KotlinFile,
-    env: Vec<EnvBlock>,
-    code: SourceCode,
-}
+use crate::source_code::Span;
 
 struct EnvBlock {
     types: HashMap<String, TypeInfo>,
     block_type: EnvBlockType,
-
 }
 
 enum EnvBlockType {
@@ -50,8 +42,16 @@ enum EnvBlockType {
     Lambda,
 }
 
+struct Env {
+    blocks: Vec<EnvBlock>
+}
+
 struct Compiler {
-    ctx: Context,
+    file: KotlinFile,
+    env: Env,
+    code: SourceCode,
+    next_id: u32,
+    type_codes: HashMap<String, String>,
     constants: HashMap<String, Constant>,
     fields: HashMap<String, Rc<CompiledField>>,
     classes: HashMap<String, Rc<CompiledClass>>,
@@ -59,37 +59,215 @@ struct Compiler {
     errors: Vec<KtError>,
 }
 
-pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<CompiledFile, Vec<KtError>> {
-    let ctx = Context { file, code, env: vec![] };
+struct FuncSignature {
+    class: Option<String>,
+    receiver: Option<String>,
+    args: Vec<String>,
+    return_ty: String,
+    // metadata
+    vararg: Option<u32>,
+    arg_names: Vec<String>,
+}
 
-    let compiler = Compiler {
-        ctx,
-        constants: HashMap::new(),
-        fields: HashMap::new(),
-        classes: HashMap::new(),
-        functions: HashMap::new(),
-        errors: vec![],
+/*
+Name: sum
+Signature: (Int, Int) -> Int
+Named Args: a, b,
+
+fun sum(a: Int, b: Int) = a + b
+*/
+
+
+fn compile_function(ctx: &mut Compiler, fun: &AstFunction) {
+    let receiver = fun.return_ty.as_ref().map(|ty| &ty.name).cloned();
+
+    let args = fun.args.iter().map(|arg| {
+        if let Some(ty) = &arg.ty {
+            check_type(ctx, ty)
+        } else {
+            ctx.new_analyser_error(fun.span, AnalyserError::MissingFunctionParameterType);
+            "_error_".to_string()
+        }
+    }).collect_vec();
+
+    let arg_names = fun.args.iter().map(|arg| &arg.name).cloned().collect_vec();
+
+    let return_ty = if let Some(body) = &fun.body {
+        infer_type(ctx, fun.return_ty.as_ref(), body)
+    } else {
+        if let Some(ret) = &fun.return_ty {
+            check_type(ctx, ret)
+        } else {
+            ctx.new_analyser_error(fun.span, AnalyserError::MissingReturnType);
+            "_error_".to_string()
+        }
     };
 
-//    for obj in &file.objects {
-//        compile_top_level_object(&mut compiler, obj);
-//    }
+    let signature = FuncSignature {
+        class: None,
+        receiver,
+        args,
+        return_ty,
+        vararg: None,
+        arg_names,
+    };
 
-//    compile_expr(&mut compiler, expr);
+    let body = fun.body.as_ref().map(|e| compile_expr(ctx, e, &fun.name));
 
-    if compiler.errors.is_empty() {
-        Ok(CompiledFile {
-            constants: compiler.constants,
-            fields: compiler.fields,
-            classes: compiler.classes,
-            functions: compiler.functions,
-        })
-    } else {
-        Err(compiler.errors)
+    ctx.env.add_function(&fun.name, signature, body);
+}
+
+fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, prefix: &str) -> String {
+    unimplemented!()
+}
+
+fn check_type(ctx: &mut Compiler, ty: &AstType) -> String {
+    if let Some(_) = ctx.env.find_type(&ty.full_name) {
+        let code = generate_rand_str();
+        ctx.type_codes.insert(code.clone(), ty.full_name.to_string());
+        return code;
+    }
+
+    ctx.new_analyser_error(ty.span, AnalyserError::UnresolvedReference(ty.name.to_string()));
+
+    "_error_".to_string()
+}
+
+fn infer_type(ctx: &mut Compiler, ty: Option<&AstType>, block: &AstExpr) -> String {
+    generate_rand_str()
+//    let name = match block {
+//        AstExpr::Constant { value, .. } => {
+//            match value {
+//                Constant::Null => "kotlin.Nothing",
+//                Constant::Array(_) => "[",
+//                Constant::Boolean(_) => "java.lang.Boolean",
+//                Constant::Double(_) => "java.lang.Double",
+//                Constant::Float(_) => "java.lang.Float",
+//                Constant::Byte(_) => "java.lang.Byte",
+//                Constant::Short(_) => "java.lang.Short",
+//                Constant::Int(_) => "java.lang.Integer",
+//                Constant::Long(_) => "java.lang.Long",
+//                Constant::Char(_) => "java.lang.Character",
+//                Constant::String(_) => "java.lang.String",
+//            }
+//        },
+//        AstExpr::Block { .. } => {
+//            // type of last expresion
+//        },
+//        AstExpr::Ref { .. } => {
+//            // type of variable
+//        },
+//        AstExpr::InvokeStatic { .. } => {
+//            // return of function
+//        },
+//        AstExpr::InvokeDynamic { .. } => {
+//            // return of function
+//        },
+//        AstExpr::ReadField { .. } => {
+//            // type of field
+//        },
+//        AstExpr::WriteRef { .. } => {
+//            panic!()
+//            // is this an expresion?
+//        },
+//        AstExpr::Is { .. } => {
+//            "java.lang.Boolean"
+//        },
+//        AstExpr::If { if_true, .. } => {
+//            infer_type(ctx, ty, &if_true.borrow())
+//        },
+//        AstExpr::For { .. } => {
+//            panic!()
+//        },
+//        AstExpr::While { .. } => {
+//            panic!()
+//        },
+//        AstExpr::DoWhile { .. } => {
+//            panic!()
+//        },
+//        AstExpr::Continue { .. } => {
+//            "kotlin.Unit"
+//        },
+//        AstExpr::Break { .. } => {
+//            "kotlin.Unit"
+//        },
+//        AstExpr::Try { .. } => {
+//            panic!()
+//        },
+//        AstExpr::Throw { .. } => {
+//            "kotlin.Nothing"
+//        },
+//        AstExpr::Return { .. } => {
+//            "kotlin.Unit"
+//        },
+//    };
+//
+//    String::from(name)
+}
+
+fn generate_rand_str() -> String {
+    let mut rng = rand::thread_rng();
+    let mut data = String::new();
+    let digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
+
+    for _ in 0..8 {
+        let d: i32 = rng.gen_range(0, 16);
+        data.push(digits[d as usize]);
+    }
+
+    data
+}
+
+
+impl Env {
+    fn add_function(&mut self, name: &str, signature: FuncSignature, body: Option<String>) {}
+
+    fn last_block(&mut self) -> &mut EnvBlock {
+        self.blocks.last_mut().unwrap()
+    }
+
+    fn find_type(&mut self, name: &str) -> Option<()> {
+        None
     }
 }
 
-fn compile_expr(comp: &mut Compiler, expr: &Expr) -> PseudoBlock {
+impl Compiler {
+    fn new_analyser_error(&mut self, span: Span, info: AnalyserError) {
+        self.errors.push(KtError::Analyser { code: self.code.clone(), span, info });
+    }
+}
+
+//pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<CompiledFile, Vec<KtError>> {
+//    let ctx = Context { file, code, env: vec![] };
+//
+//    let compiler = Compiler {
+//        ctx,
+//        constants: HashMap::new(),
+//        fields: HashMap::new(),
+//        classes: HashMap::new(),
+//        functions: HashMap::new(),
+//        errors: vec![],
+//    };
+//
+//    for obj in &file.objects {
+//        compile_top_level_object(&mut compiler, obj);
+//    }
+//
+//    compile_expr(&mut compiler, expr);
+//
+//    if compiler.errors.is_empty() {
+//        Ok(CompiledFile {
+//            constants: compiler.constants,
+//            fields: compiler.fields,
+//            classes: compiler.classes,
+//            functions: compiler.functions,
+//        })
+//    } else {
+//        Err(compiler.errors)
+//    }
+//}
+
+//fn compile_expr(comp: &mut Compiler, expr: &Expr) -> PseudoBlock {
 //    let mut insts = vec![];
 //    match expr {
 //        Expr::Chain { .. } => {}
@@ -154,23 +332,9 @@ fn compile_expr(comp: &mut Compiler, expr: &Expr) -> PseudoBlock {
 //
 //        }
 //    }
-
-    unimplemented!()
-}
-
-struct PseudoBlock {
-    instructions: Vec<PseudoInstruction>
-}
-
-enum PseudoInstruction {
-    Load(Constant),
-    Run(PseudoBlock),
-    Jump(u32, RefCell<u32>),
-    LoadVar(String),
-    Return,
-    Break(u32),
-    Continue(u32),
-}
+//
+//    unimplemented!()
+//}
 
 //pub enum AstExpr {
 //    Call(String, Vec<AstExpr>),

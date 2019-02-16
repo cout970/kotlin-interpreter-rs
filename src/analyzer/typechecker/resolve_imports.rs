@@ -37,6 +37,7 @@ impl<'t> Context<'t> {
             return None;
         }
 
+        // TODO there are partial imports, fuck, there are 3 options
         if name.contains(".") {
             // Absolute reference
             let pos = name.chars().rev().position(|c| c == '.').unwrap();

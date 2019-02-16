@@ -65,6 +65,8 @@ pub enum AnalyserError {
     EnumWithoutBody,
     ObjectWithConstructor,
     MultipleVarargs,
+    MissingReturnType,
+    MissingFunctionParameterType
 }
 
 #[derive(Debug, Clone)]
