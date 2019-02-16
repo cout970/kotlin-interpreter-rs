@@ -111,8 +111,7 @@ mod tests {
             let ref mut s = Tokenizer::new(code.clone());
             let tks = s.read_tokens().expect(&format!("Tokenizer error at {}", path));
 
-            let mut parser = Parser::new(code.clone(), tks);
-            let file = parser.parse_file().expect(&format!("Parsing error at {}", path));
+            let file = Parser::parse_kotlin_file(code.clone(), tks).expect(&format!("Parsing error at {}", path));
 
             let (_ast, errors) = file_to_ast(code.clone(), &file);
 

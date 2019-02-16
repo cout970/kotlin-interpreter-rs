@@ -11,8 +11,7 @@ pub fn assert_fails(code: &str) {
     let ref mut tokenizer = Tokenizer::new(code.clone());
     let tokens = tokenizer.read_tokens().unwrap();
 
-    let mut parser = Parser::new(code.clone(), tokens);
-    let file = match parser.parse_file() {
+    let file = match Parser::parse_kotlin_file(code.clone(), tokens) {
         Ok(it) => it,
         Err(it) => {
             println!("ParsingError: {}\n", it);
@@ -37,8 +36,7 @@ pub fn assert_success(code: &str){
     let ref mut tokenizer = Tokenizer::new(code.clone());
     let tokens = tokenizer.read_tokens().unwrap();
 
-    let mut parser = Parser::new(code.clone(), tokens);
-    let file = parser.parse_file().unwrap();
+    let file = Parser::parse_kotlin_file(code.clone(), tokens).unwrap();
 
     let (ast, errors) = file_to_ast(code.clone(), &file);
     let ast = dbg!(ast);
@@ -63,8 +61,7 @@ pub fn assert_correct_ast(code: &str) -> CheckedFile {
     let ref mut tokenizer = Tokenizer::new(code.clone());
     let tokens = tokenizer.read_tokens().unwrap();
 
-    let mut parser = Parser::new(code.clone(), tokens);
-    let file = parser.parse_file().unwrap();
+    let file = Parser::parse_kotlin_file(code.clone(), tokens).unwrap();
 
     let (ast, errors) = file_to_ast(code.clone(), &file);
     let ast = dbg!(ast);
