@@ -34,4 +34,5 @@ union that allows to do quick development while maintaining great performance.
 - [ ] Type name is valid
 - [ ] Function call has valid parameters
 - [ ] getter visibility must be the same as the property visibility
+- [ ] local classes cannot be interfaces
 - [ ] A bunch more...

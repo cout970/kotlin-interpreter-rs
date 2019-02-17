@@ -33,6 +33,10 @@ use crate::source_code::Span;
 
 struct EnvBlock {
     types: HashMap<String, TypeInfo>,
+//    variables: HashMap<String, TypeInfo>,
+//    methods: HashMap<String, TypeInfo>,
+//    enum_literals: HashMap<String, TypeInfo>,
+//    type_parameters: HashMap<String, TypeInfo>,
     block_type: EnvBlockType,
 }
 
@@ -93,7 +97,7 @@ fn compile_function(ctx: &mut Compiler, fun: &AstFunction) {
     let arg_names = fun.args.iter().map(|arg| &arg.name).cloned().collect_vec();
 
     let return_ty = if let Some(body) = &fun.body {
-        infer_type(ctx, fun.return_ty.as_ref(), body)
+        infer_type_block(ctx, fun.return_ty.as_ref(), body)
     } else {
         if let Some(ret) = &fun.return_ty {
             check_type(ctx, ret)
@@ -112,12 +116,16 @@ fn compile_function(ctx: &mut Compiler, fun: &AstFunction) {
         arg_names,
     };
 
-    let body = fun.body.as_ref().map(|e| compile_expr(ctx, e, &fun.name));
+    let body = fun.body.as_ref().map(|e| compile_block(ctx, e, &fun.name));
 
     ctx.env.add_function(&fun.name, signature, body);
 }
 
 fn compile_expr(ctx: &mut Compiler, expr: &AstExpr, prefix: &str) -> String {
+    unimplemented!()
+}
+
+fn compile_block(ctx: &mut Compiler, blk: &AstBlock, prefix: &str) -> String {
     unimplemented!()
 }
 
@@ -131,6 +139,10 @@ fn check_type(ctx: &mut Compiler, ty: &AstType) -> String {
     ctx.new_analyser_error(ty.span, AnalyserError::UnresolvedReference(ty.name.to_string()));
 
     "_error_".to_string()
+}
+
+fn infer_type_block(ctx: &mut Compiler, ty: Option<&AstType>, block: &AstBlock) -> String {
+    unimplemented!()
 }
 
 fn infer_type(ctx: &mut Compiler, ty: Option<&AstType>, block: &AstExpr) -> String {

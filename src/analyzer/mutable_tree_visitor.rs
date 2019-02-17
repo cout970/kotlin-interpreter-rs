@@ -150,9 +150,9 @@ pub fn visit_function<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstFunctio
 
     visit_opt_type(v, state, &mut ast.return_ty);
 
-    if let Some(expr) = &mut ast.body {
-        visit_expr(v, state, expr);
-    }
+//    if let Some(expr) = &mut ast.body {
+//        visit_expr(v, state, expr);
+//    }
 
     if let Some(func) = &mut v.post_visit_function {
         func(state, ast);
@@ -207,67 +207,58 @@ pub fn visit_expr<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstExpr) {
     }
 
     match ast {
-        AstExpr::Block { statements, .. } => {
-            for stmt in statements {
-                visit_statement(v, state, stmt);
-            }
+        AstExpr::Block { block, .. } => {
+//            for stmt in statements {
+//                visit_statement(v, state, stmt);
+//            }
         }
         AstExpr::Constant { .. } => {}
         AstExpr::Ref { .. } => {}
-        AstExpr::InvokeStatic { args, .. } => {
-            for arg in args {
-                visit_expr(v, state, arg);
+        AstExpr::Call { args, receiver, .. } => {
+            if let Some(rec) = receiver {
+                visit_rc_expr(v, state, rec)
             }
-        }
-        AstExpr::InvokeDynamic { args, obj, .. } => {
-            visit_rc_expr(v, state, obj);
 
             for arg in args {
                 visit_expr(v, state, arg);
             }
-        }
-        AstExpr::ReadField { object, .. } => {
-            visit_rc_expr(v, state, object);
-        }
-        AstExpr::WriteRef { expr, .. } => {
-            visit_rc_expr(v, state, expr);
         }
         AstExpr::Is { expr, .. } => {
             visit_rc_expr(v, state, expr);
         }
         AstExpr::If { cond, if_true, if_false, .. } => {
             visit_rc_expr(v, state, cond);
-            visit_rc_expr(v, state, if_true);
-            if let Some(if_false) = if_false {
-                visit_rc_expr(v, state, if_false);
-            }
+//            visit_rc_expr(v, state, if_true);
+//            if let Some(if_false) = if_false {
+//                visit_rc_expr(v, state, if_false);
+//            }
         }
         AstExpr::For { variables, expr, body, .. } => {
             for var in variables {
                 visit_var(v, state, var);
             }
-            visit_rc_expr(v, state, expr);
-            visit_rc_expr(v, state, body);
+//            visit_rc_expr(v, state, expr);
+//            visit_rc_expr(v, state, body);
         }
         AstExpr::While { expr, body, .. } => {
             visit_rc_expr(v, state, expr);
-            visit_rc_expr(v, state, body);
+//            visit_rc_expr(v, state, body);
         }
         AstExpr::DoWhile { expr, body, .. } => {
             visit_rc_expr(v, state, expr);
-            visit_rc_expr(v, state, body);
+//            visit_rc_expr(v, state, body);
         }
         AstExpr::Continue { .. } => {}
         AstExpr::Break { .. } => {}
         AstExpr::Try { body, catch, finally, .. } => {
-            visit_rc_expr(v, state, body);
-            for (var, expr) in catch {
-                visit_var(v, state, var);
-                visit_expr(v, state, expr);
-            }
-            if let Some(expr) = finally {
-                visit_rc_expr(v, state, expr);
-            }
+//            visit_rc_expr(v, state, body);
+//            for (var, expr) in catch {
+//                visit_var(v, state, var);
+//                visit_expr(v, state, expr);
+//            }
+//            if let Some(expr) = finally {
+//                visit_rc_expr(v, state, expr);
+//            }
         }
         AstExpr::Throw { exception, .. } => {
             visit_rc_expr(v, state, exception);
@@ -291,6 +282,10 @@ pub fn visit_statement<S>(v: &mut Visitor<S>, state: &mut S, ast: &mut AstStatem
 
     match ast {
         AstStatement::Expr(ast) => visit_expr(v, state, ast),
+        AstStatement::Assignment(a, b) => {
+            visit_expr(v, state, a);
+            visit_expr(v, state, b);
+        },
         AstStatement::Class(ast) => visit_class(v, state, ast),
         AstStatement::Function(ast) => visit_function(v, state, ast),
         AstStatement::Property(ast) => visit_local_property(v, state, ast),

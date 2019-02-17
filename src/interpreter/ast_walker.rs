@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
+
+use crate::analyzer::ast::AstBlock;
 use crate::analyzer::ast::AstExpr;
 use crate::analyzer::ast::AstStatement;
 use crate::analyzer::ast::MutRc;
@@ -13,6 +16,8 @@ struct Context {
 enum Value {
     Primitive(Constant),
     Object(MutRc<HashMap<String, Value>>),
+    Nothing,
+    Unit,
 }
 
 impl Context {
@@ -33,61 +38,69 @@ impl Context {
     fn new_ref(&mut self, name: &str, value: Value) {
         self.values.insert(name.to_owned(), value);
     }
+
+    fn get_func(&mut self, receiver: &Option<Value>, name: &str) -> Option<String> {
+        // TODO
+        None
+    }
 }
 
-fn eval_stm(ctx: &mut Context, ast: &AstStatement) -> Option<Value> {
+fn eval_stm(ctx: &mut Context, ast: &AstStatement) -> Result<Option<Value>, Option<Value>> {
     match ast {
         AstStatement::Expr(e) => {
-            return eval_expr(ctx, e);
+            return Ok(Some(eval_expr(ctx, e)?));
+        }
+        AstStatement::Assignment(a, b) => {
+            let b_value = eval_expr(ctx, b)?;
+            let var = match a {
+                AstExpr::Ref { name, .. } => {
+                    name
+                }
+                _ => { panic!("Not a variable"); }
+            };
+
+            ctx.set_ref(var, b_value);
         }
         AstStatement::Class(_) => {}
         AstStatement::Function(_) => {}
         AstStatement::Property(prop) => {
-            let name = &prop.vars.first().unwrap().name;
-            let e = prop.expr.as_ref().unwrap();
-            let value = eval_expr(ctx, e).unwrap();
+            let name = &prop.vars.first().expect("Destructuration not implemented").name;
+            let e = prop.expr.as_ref().expect("Var initialization");
+            let value = eval_expr(ctx, e)?;
             ctx.new_ref(name, value);
         }
     }
-    None
+    Ok(None)
 }
 
-fn eval_expr(ctx: &mut Context, ast: &AstExpr) -> Option<Value> {
+fn eval_expr(ctx: &mut Context, ast: &AstExpr) -> Result<Value, Option<Value>> {
     match ast {
-        AstExpr::Block { statements, .. } => {
-            let mut last = None;
-            for x in statements {
-                last = eval_stm(ctx, x);
-            }
-            return last;
+        AstExpr::Block { block, .. } => {
+//            match block {
+//                // TODO
+//            }
         }
         AstExpr::Constant { value, .. } => {
-            return Some(Value::Primitive(value.clone()));
+            return Ok(Value::Primitive(value.clone()));
         }
         AstExpr::Ref { name, .. } => {
-            return ctx.get_ref(name);
-        }
-
-        AstExpr::ReadField { field, object, .. } => {
-            let value = eval_expr(ctx, &object.borrow()).unwrap();
-            if let Value::Object(obj) = value {
-                let obj_ref = &obj.borrow();
-                let value_ref = obj_ref.get(field).unwrap();
-                return Some(value_ref.clone());
-            }
-        }
-        AstExpr::WriteRef { name, expr, .. } => {
-            let value = eval_expr(ctx, &expr.borrow()).unwrap();
-            ctx.set_ref(name, value);
+            return Ok(ctx.get_ref(name).unwrap());
         }
         AstExpr::Is { .. } => {
-            return Some(Value::Primitive(Constant::Boolean(true)));
+            return Ok(Value::Primitive(Constant::Boolean(true)));
         }
         AstExpr::If { cond, if_true, if_false, .. } => {
             if let Value::Primitive(Constant::Boolean(value)) = eval_expr(ctx, &cond.borrow()).unwrap() {
-                return eval_expr(ctx, &if_true.borrow());
+                return eval_block(ctx, if_true);
             } else {
-                return if_false.clone().and_then(|it| eval_expr(ctx, &it.borrow()));
+                if let Some(block) = if_false {
+                    match eval_block(ctx, block) {
+                        Ok(value) => { return Ok(value); }
+                        Err(e) => { return Err(e); }
+                    }
+                } else {
+                    return Ok(Value::Unit);
+                }
             }
         }
         AstExpr::For { .. } => {}
@@ -96,24 +109,58 @@ fn eval_expr(ctx: &mut Context, ast: &AstExpr) -> Option<Value> {
         AstExpr::Continue { .. } => {}
         AstExpr::Break { .. } => {}
         AstExpr::Try { .. } => {}
-        AstExpr::Throw { .. } => {}
-        AstExpr::Return { .. } => {}
-        AstExpr::InvokeStatic { function, type_parameters, args, .. } => {
-            let a = eval_expr(ctx, &args[0]).unwrap();
-            let b = eval_expr(ctx, &args[1]).unwrap();
-
-            match function.as_str() {
-                "+" => return Some(from_int(as_int(a) + as_int(b))),
-                "-" => return Some(from_int(as_int(a) - as_int(b))),
-                "*" => return Some(from_int(as_int(a) * as_int(b))),
-                "/" => return Some(from_int(as_int(a) / as_int(b))),
-                _ => {}
+        AstExpr::Throw { .. } => {
+            return Err(None);
+        }
+        AstExpr::Return { value, .. } => {
+            if let Some(expr) = value {
+                match eval_expr(ctx, &expr.borrow()) {
+                    Ok(value) => { return Ok(value); }
+                    Err(e) => { return Err(e); }
+                }
+            } else {
+                return Ok(Value::Unit);
             }
         }
-        AstExpr::InvokeDynamic { .. } => {}
+        AstExpr::Call { receiver, function, type_parameters, args, .. } => {
+            let rec = if let Some(expr) = receiver {
+                match eval_expr(ctx, &expr.borrow()) {
+                    Ok(value) => { Some(value) }
+                    Err(e) => { return Err(e); }
+                }
+            } else {
+                None
+            };
+
+            let mut value_args = vec![];
+
+            for it in args {
+                match eval_expr(ctx, it) {
+                    Ok(value) => { value_args.push(value); }
+                    Err(e) => { return Err(e); }
+                }
+            }
+
+            let func = ctx.get_func(&rec, function).expect(&format!("Function not found: {}", function));
+
+            return Ok(call_function(ctx, func, rec, value_args));
+        }
     }
 
-    None
+    Ok(Value::Unit)
+}
+
+fn eval_block(ctx: &mut Context, ast: &AstBlock) -> Result<Value, Option<Value>> {
+    let mut iter = ast.statements.iter();
+    let mut ret = eval_stm(ctx, iter.next().unwrap())?;
+    for s in iter {
+        ret = eval_stm(ctx, s)?;
+    }
+    Ok(ret.unwrap_or(Value::Unit))
+}
+
+fn call_function(ctx: &mut Context, func: String, rec: Option<Value>, args: Vec<Value>) -> Value {
+    Value::Unit
 }
 
 fn as_int(a: Value) -> i32 {
@@ -131,6 +178,7 @@ fn add(a: Value, b: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use crate::interpreter::ast_walker::Context;
+    use crate::interpreter::ast_walker::eval_block;
     use crate::interpreter::ast_walker::eval_expr;
     use crate::test_utils::assert_correct_ast;
 
@@ -139,14 +187,15 @@ mod tests {
         let file = assert_correct_ast(r#"
             fun test() {
                 val b = 321 + 6 / 3
-
-                b
+                var a = 0
+                a = b
+                a
             }
         "#);
         let main_func = file.ast.functions.first().unwrap();
-        let expr = &main_func.body.as_ref().unwrap().clone();
+        let body = &main_func.body.as_ref().unwrap().clone();
         let mut ctx = Context::new();
-        let value = eval_expr(&mut ctx, expr);
+        let value = eval_block(&mut ctx, body);
         dbg!(value);
     }
 }

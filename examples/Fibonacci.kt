@@ -1,7 +1,6 @@
 #!/bin/bash
 @file:Suppress("unused")
 
-import TestinObj.A.B
 import TestinObj.A
 
 external fun println(x: Any)
@@ -16,8 +15,39 @@ fun main(args: Array<String>) {
 //    val b: BooleanIterator? = null
 }
 
-fun t(vararg a : Int, b: Float){
+fun t(vararg a: Int, b: Float) {
 
+}
+
+class F {
+    var f: Int = 0
+        get() = field + 1
+
+
+    fun getF(): Int {
+        val a = F::f
+        val b = F::getF
+        val c = {}
+
+        abstract class I{
+            abstract fun t()
+        }
+
+        val d = object : I() {
+            override fun t() {
+
+            }
+        }
+        val e = fun(): Int { return 1.and(TODO()) }
+
+        val f = if(1 > 2){
+            3
+        }else{
+            4
+        }
+
+        return 0
+    }
 }
 
 fun fibonacci(x: Int): Int = when (x) {
@@ -206,7 +236,7 @@ object TestinObj : Testing({}) {
 
             }
 
-            fun t(){
+            fun t() {
 
             }
         }

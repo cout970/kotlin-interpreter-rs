@@ -81,8 +81,17 @@ pub struct AstFunction {
     pub name: String,
     pub args: Vec<AstVar>,
     pub return_ty: Option<AstType>,
-    pub body: Option<AstExpr>,
+    pub body: Option<AstBlock>,
     // TODO default parameters
+}
+
+#[derive(Clone, PartialEq)]
+pub struct AstLambda {
+    pub span: Span,
+    pub extension: bool,
+    pub args: Vec<AstVar>,
+    pub return_ty: Option<AstType>,
+    pub body: AstBlock,
 }
 
 #[derive(Clone, PartialEq, Default)]
@@ -141,6 +150,7 @@ impl Default for AstInheritanceModifier {
 #[derive(Clone, PartialEq)]
 pub enum AstStatement {
     Expr(AstExpr),
+//    Assignment(Option<AstExpr>, name, AstExpr),
     Assignment(AstExpr, AstExpr),
     Class(AstClass),
     Function(AstFunction),
@@ -161,10 +171,17 @@ pub fn mut_rc<T>(a: T) -> MutRc<T> {
 }
 
 #[derive(Clone, PartialEq)]
+pub enum ExprBlock {
+    Lambda(AstLambda),
+    AnonymousFunction(AstFunction),
+    ObjectLiteral(AstClass)
+}
+
+#[derive(Clone, PartialEq)]
 pub enum AstExpr {
     Block {
         span: Span,
-        statements: Vec<AstStatement>,
+        block: ExprBlock,
     },
     Constant {
         span: Span,
@@ -174,28 +191,12 @@ pub enum AstExpr {
         span: Span,
         name: String,
     },
-    InvokeStatic {
+    Call {
         span: Span,
+        receiver: Option<MutRc<AstExpr>>,
         function: String,
         type_parameters: Vec<AstTypeParameter>,
         args: Vec<AstExpr>,
-    },
-    InvokeDynamic {
-        span: Span,
-        obj: MutRc<AstExpr>,
-        function: String,
-        type_parameters: Vec<AstTypeParameter>,
-        args: Vec<AstExpr>,
-    },
-    ReadField {
-        span: Span,
-        field: String,
-        object: MutRc<AstExpr>,
-    },
-    WriteRef {
-        span: Span,
-        name: String,
-        expr: MutRc<AstExpr>,
     },
     Is {
         span: Span,
@@ -205,24 +206,24 @@ pub enum AstExpr {
     If {
         span: Span,
         cond: MutRc<AstExpr>,
-        if_true: MutRc<AstExpr>,
-        if_false: Option<MutRc<AstExpr>>,
+        if_true: AstBlock,
+        if_false: Option<AstBlock>,
     },
     For {
         span: Span,
         variables: Vec<AstVar>,
         expr: MutRc<AstExpr>,
-        body: MutRc<AstExpr>,
+        body: AstBlock,
     },
     While {
         span: Span,
         expr: MutRc<AstExpr>,
-        body: MutRc<AstExpr>,
+        body: AstBlock,
     },
     DoWhile {
         span: Span,
         expr: MutRc<AstExpr>,
-        body: MutRc<AstExpr>,
+        body: AstBlock,
     },
     Continue {
         span: Span,
@@ -232,9 +233,9 @@ pub enum AstExpr {
     },
     Try {
         span: Span,
-        body: MutRc<AstExpr>,
-        catch: Vec<(AstVar, AstExpr)>,
-        finally: Option<MutRc<AstExpr>>,
+        body: AstBlock,
+        catch: Vec<(AstVar, AstBlock)>,
+        finally: Option<AstBlock>,
     },
     Throw {
         span: Span,
@@ -244,4 +245,10 @@ pub enum AstExpr {
         span: Span,
         value: Option<MutRc<AstExpr>>,
     },
+}
+
+#[derive(Clone, PartialEq)]
+pub struct AstBlock {
+    pub span: Span,
+    pub statements: Vec<AstStatement>,
 }
