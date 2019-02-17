@@ -29,7 +29,7 @@ class F {
         val b = F::getF
         val c = {}
 
-        abstract class I{
+        abstract class I {
             abstract fun t()
         }
 
@@ -40,12 +40,16 @@ class F {
         }
         val e = fun(): Int { return 1.and(TODO()) }
 
-        val f = if(1 > 2){
+        val f = if (1 > 2) {
             3
-        }else{
+        } else {
             4
         }
 
+        val g = object {
+            var t = 0
+        }
+        g.t = 1
         return 0
     }
 }

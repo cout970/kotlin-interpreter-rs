@@ -150,7 +150,6 @@ impl Default for AstInheritanceModifier {
 #[derive(Clone, PartialEq)]
 pub enum AstStatement {
     Expr(AstExpr),
-//    Assignment(Option<AstExpr>, name, AstExpr),
     Assignment(AstExpr, AstExpr),
     Class(AstClass),
     Function(AstFunction),
@@ -189,6 +188,7 @@ pub enum AstExpr {
     },
     Ref {
         span: Span,
+        obj: Option<MutRc<AstExpr>>,
         name: String,
     },
     Call {

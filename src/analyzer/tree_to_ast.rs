@@ -146,7 +146,12 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                     args: vec![value],
                 }
             }
-            AstStatement::Assignment(var, value)
+            if let AstExpr::Ref { .. } = &var {
+                AstStatement::Assignment(var, value)
+            } else {
+                ctx.new_error(get_span(&var), AnalyserError::ExpectedVariable);
+                AstStatement::Expr(value)
+            }
         }
         Statement::Declaration(decl) => {
             match decl {
@@ -681,18 +686,21 @@ fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
         Expr::This => {
             AstExpr::Ref {
                 span,
+                obj: None,
                 name: "this".to_owned(),
             }
         }
         Expr::Super => {
             AstExpr::Ref {
                 span,
+                obj: None,
                 name: "super".to_owned(),
             }
         }
         Expr::Ref(name) => {
             AstExpr::Ref {
                 span,
+                obj: None,
                 name: name.to_owned(),
             }
         }
@@ -876,13 +884,10 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
             }
             ExprPostfix::MemberAccess { member, .. } => {
                 // TODO operator: . ?.
-                ast = AstExpr::Call {
+                ast = AstExpr::Ref {
                     span,
-                    receiver: Some(mut_rc(ast)),
-                    // TODO get_prop, should be getProp
-                    function: "get_".to_string() + member,
-                    type_parameters: vec![],
-                    args: vec![],
+                    obj: Some(mut_rc(ast)),
+                    name: member.to_string()
                 };
             }
         }
@@ -963,7 +968,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
             StringComponent::Variable(name) => {
                 str_expr.push(AstExpr::Call {
                     span,
-                    receiver: Some(mut_rc(AstExpr::Ref { span, name: name.to_owned() })),
+                    receiver: Some(mut_rc(AstExpr::Ref { span, obj: None, name: name.to_owned() })),
                     function: "toString".to_owned(),
                     type_parameters: vec![],
                     args: vec![],
