@@ -141,6 +141,7 @@ impl Default for AstInheritanceModifier {
 #[derive(Clone, PartialEq)]
 pub enum AstStatement {
     Expr(AstExpr),
+    Assignment(AstExpr, AstExpr),
     Class(AstClass),
     Function(AstFunction),
     Property(AstLocalProperty),

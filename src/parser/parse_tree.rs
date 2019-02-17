@@ -306,8 +306,9 @@ pub enum FunctionBody {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Statement {
-    Expr(ExprVal),
-    Decl(Declaration),
+    Expression(ExprVal),
+    Assignment(ExprVal, String, ExprVal),
+    Declaration(Declaration),
 }
 
 #[derive(Clone, PartialEq, Debug)]

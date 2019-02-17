@@ -130,8 +130,25 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
 
 fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
     match statement {
-        Statement::Expr(e) => AstStatement::Expr(expr_to_ast(ctx, e)),
-        Statement::Decl(decl) => {
+        Statement::Expression(e) => AstStatement::Expr(expr_to_ast(ctx, e)),
+        Statement::Assignment(first, op, second) => {
+            let var = expr_to_ast(ctx, first);
+            let mut value = expr_to_ast(ctx, second);
+
+            if op != "=" {
+                let operator = op.chars().next().unwrap();
+
+                value = AstExpr::InvokeDynamic {
+                    span: get_span(&value),
+                    obj: mut_rc(var.clone()),
+                    function: operator.to_string(),
+                    type_parameters: vec![],
+                    args: vec![value]
+                }
+            }
+            AstStatement::Assignment(var, value)
+        },
+        Statement::Declaration(decl) => {
             match decl {
                 Declaration::Class(class) => {
                     AstStatement::Class(class_to_ast(ctx, class))

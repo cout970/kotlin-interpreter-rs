@@ -328,6 +328,21 @@ create_operator_fun!(
     Token::ModEquals => "%=",
 );
 
+fn read_statement_expr(s: &mut TokenCursor) -> Result<Statement, KtError> {
+    let start = s.start();
+    let first = read_expr_disjunction(s)?;
+
+    match read_expr_assignment_operator(s) {
+        Ok(op) => {
+            let second = read_expr_disjunction(s)?;
+            Ok(Statement::Assignment(first, op, second))
+        }
+        Err(_) => {
+            Ok(Statement::Expression(first))
+        }
+    }
+}
+
 fn read_expresion(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
     let (dis, ops) = s.chain(&read_expr_assignment_operator, &read_expr_disjunction)?;
@@ -941,7 +956,7 @@ fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
     if s.read_token(0) == Token::LeftBrace && s.at_newline() {
         let start = s.start();
         if let Some(expr) = s.optional(&read_expresion) {
-            return Ok(((start, s.end()), vec![Statement::Expr(expr)]));
+            return Ok(((start, s.end()), vec![Statement::Expression(expr)]));
         }
     }
 
@@ -951,7 +966,7 @@ fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
         // TODO support expression annotations?
         let start = s.start();
         let expr = read_expresion(s)?;
-        Ok(((start, s.end()), vec![Statement::Expr(expr)]))
+        Ok(((start, s.end()), vec![Statement::Expression(expr)]))
     }
 }
 
@@ -1371,7 +1386,17 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
 }
 
 fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
+//    statement
+//          : (label | annotation)*
+//              ( declaration
+//              | assignment
+//              | loopStatement
+//              | expression)
+//        ;
+
+
     let save = s.save();
+    // declaration
     let modifiers = read_modifiers(s, ModifierCtx::Statement)?;
 
     if s.read_token(0) == Token::Object {
@@ -1381,11 +1406,11 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
         // in an object literal (usually small) than an entire object class (usually bigger).
         s.restore(save);
         match read_expresion(s) {
-            Ok(e) => Ok(Statement::Expr(e)),
+            Ok(e) => Ok(Statement::Expression(e)),
             Err(_) => {
                 s.restore(save);
                 let modifiers = read_modifiers(s, ModifierCtx::Statement)?;
-                Ok(Statement::Decl(read_declaration(s, modifiers)?))
+                Ok(Statement::Declaration(read_declaration(s, modifiers)?))
             }
         }
     } else {
@@ -1395,11 +1420,13 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
             s.read_token(0) == Token::Class ||
             s.read_token(0) == Token::Interface ||
             s.read_token(0) == Token::TypeAlias {
-            Ok(Statement::Decl(read_declaration(s, modifiers)?))
+            Ok(Statement::Declaration(read_declaration(s, modifiers)?))
         } else {
             // expressions don't have modifiers, so we go back to the original state
             s.restore(save);
-            Ok(Statement::Expr(read_expresion(s)?))
+            let stm = read_statement_expr(s)?;
+
+            Ok(stm)
         }
     }
 }
