@@ -54,6 +54,9 @@ class F {
     }
 }
 
+//fun test_fib(a: Int) = if (a > 0) test_fib(a - 1) else 1
+fun test_fib(a: Int) = if (a > 0) 1 else test_fib(a - 1)
+
 fun fibonacci(x: Int): Int = when (x) {
     0, 1 -> 1
     else -> fibonacci(x - 1) + fibonacci(x - 2)

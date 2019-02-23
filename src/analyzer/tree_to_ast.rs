@@ -525,8 +525,20 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 //        param.default_value
     }
 
-    let return_ty = fun.return_type.as_ref()
-        .map(|it| type_to_ast(ctx, it));
+    let return_ty = match &fun.return_type {
+        Some(ty) => { Some(type_to_ast(ctx, ty)) }
+        None => {
+            match &fun.body {
+                Some(body) => {
+                    match *body {
+                        FunctionBody::Block(_) => Some(UNIT_TYPE.clone()),
+                        FunctionBody::Expression(_) => None,
+                    }
+                }
+                None => Some(UNIT_TYPE.clone()),
+            }
+        }
+    };
 
     let mut operator = false;
 
@@ -617,7 +629,12 @@ fn function_body_to_ast(ctx: &mut Context, body: &Option<FunctionBody>) -> Optio
 fn expr_to_block(e: AstExpr) -> AstBlock {
     AstBlock {
         span: get_span(&e),
-        statements: vec![AstStatement::Expr(e)],
+        statements: vec![
+            AstStatement::Expr(AstExpr::Return {
+                span: get_span(&e),
+                value: Some(mut_rc(e)),
+            })
+        ],
     }
 }
 
@@ -887,7 +904,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                 ast = AstExpr::Ref {
                     span,
                     obj: Some(mut_rc(ast)),
-                    name: member.to_string()
+                    name: member.to_string(),
                 };
             }
         }

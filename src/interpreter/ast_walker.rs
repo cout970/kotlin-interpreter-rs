@@ -183,6 +183,7 @@ mod tests {
     use crate::test_utils::assert_correct_ast;
 
     #[test]
+    #[ignore]
     fn sum() {
         let file = assert_correct_ast(r#"
             fun test() {

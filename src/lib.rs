@@ -21,6 +21,7 @@ pub mod analyzer;
 pub mod interpreter;
 pub mod errors;
 mod test_utils;
+mod experiments;
 
 // Lang references:
 // - https://kotlinlang.org/docs/kotlin-docs.pdf
