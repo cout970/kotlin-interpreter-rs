@@ -74,14 +74,9 @@ impl Debug for AstBlock {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
 }
 
-impl Debug for ExprBlock {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
-}
-
 impl Debug for AstLambda {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> { write!(f, "{}", self) }
 }
-
 
 impl Display for AstFile {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -280,8 +275,14 @@ impl Display for AstType {
 impl Display for AstExpr {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            AstExpr::Block { block, .. } => {
-                write!(f, "{:?}\n", block)?;
+            AstExpr::Lambda { block, .. } => {
+                write!(f, "{:#?}\n", block)?;
+            }
+            AstExpr::AnonymousFunction { block, .. } => {
+                write!(f, "{:#?}\n", block)?;
+            }
+            AstExpr::ObjectLiteral { block, .. } => {
+                write!(f, "{:#?}\n", block)?;
             }
             AstExpr::Constant { value, .. } => {
                 write!(f, "{:?}", value)?;
@@ -392,23 +393,6 @@ impl Display for AstVar {
 
         if let Some(ty) = &self.ty {
             write!(f, ": {:?}", ty)?;
-        }
-        Ok(())
-    }
-}
-
-impl Display for ExprBlock {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        match self {
-            ExprBlock::Lambda(lambda) => {
-                write!(f, "{:#?}\n", lambda)?;
-            }
-            ExprBlock::AnonymousFunction(fun) => {
-                write!(f, "{:#?}\n", fun)?;
-            }
-            ExprBlock::ObjectLiteral(class) => {
-                write!(f, "{:#?}\n", class)?;
-            }
         }
         Ok(())
     }

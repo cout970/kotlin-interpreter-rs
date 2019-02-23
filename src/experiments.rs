@@ -182,19 +182,20 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
 }
 
 fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
-    match *expr {
-        AstExpr::Block { .. } => {},
-        AstExpr::Constant { .. } => {},
-        AstExpr::Ref { .. } => {},
-        AstExpr::Call { .. } => {},
-        AstExpr::Is { .. } => {},
-        AstExpr::If { .. } => {},
-        AstExpr::Continue { .. } => {},
-        AstExpr::Break { .. } => {},
-        AstExpr::Try { .. } => {},
-        AstExpr::Throw { .. } => {},
-        AstExpr::Return { .. } => {},
-    }
+//    match *expr {
+//        AstExpr::Block { .. } => {},
+//        AstExpr::Constant { .. } => {},
+//        AstExpr::Ref { .. } => {},
+//        AstExpr::Call { .. } => {},
+//        AstExpr::Is { .. } => {},
+//        AstExpr::If { .. } => {},
+//        AstExpr::Continue { .. } => {},
+//        AstExpr::Break { .. } => {},
+//        AstExpr::Try { .. } => {},
+//        AstExpr::Throw { .. } => {},
+//        AstExpr::Return { .. } => {},
+//    }
+    unimplemented!()
 }
 
 #[cfg(test)]

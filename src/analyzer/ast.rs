@@ -186,17 +186,18 @@ pub fn mut_rc<T>(a: T) -> MutRc<T> {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum ExprBlock {
-    Lambda(AstLambda),
-    AnonymousFunction(AstFunction),
-    ObjectLiteral(AstClass)
-}
-
-#[derive(Clone, PartialEq)]
 pub enum AstExpr {
-    Block {
+    Lambda {
         span: Span,
-        block: ExprBlock,
+        block: AstLambda,
+    },
+    AnonymousFunction {
+        span: Span,
+        block: AstFunction,
+    },
+    ObjectLiteral {
+        span: Span,
+        block: AstClass,
     },
     Constant {
         span: Span,

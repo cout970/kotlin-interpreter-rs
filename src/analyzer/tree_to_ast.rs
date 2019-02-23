@@ -1288,7 +1288,9 @@ fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Ve
 
 fn get_span(expr: &AstExpr) -> Span {
     match expr {
-        AstExpr::Block { span, .. } => *span,
+        AstExpr::Lambda { span, .. } => *span,
+        AstExpr::AnonymousFunction { span, .. } => *span,
+        AstExpr::ObjectLiteral { span, .. } => *span,
         AstExpr::Constant { span, .. } => *span,
         AstExpr::Ref { span, .. } => *span,
         AstExpr::Call { span, .. } => *span,

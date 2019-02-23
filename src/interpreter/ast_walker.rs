@@ -76,11 +76,9 @@ fn eval_stm(ctx: &mut Context, ast: &AstStatement) -> Result<Option<Value>, Opti
 
 fn eval_expr(ctx: &mut Context, ast: &AstExpr) -> Result<Value, Option<Value>> {
     match ast {
-        AstExpr::Block { block, .. } => {
-//            match block {
-//                // TODO
-//            }
-        }
+        AstExpr::Lambda { block, .. } => { /*TODO*/ }
+        AstExpr::AnonymousFunction { block, .. } => { /*TODO*/ }
+        AstExpr::ObjectLiteral { block, .. } => { /*TODO*/ }
         AstExpr::Constant { value, .. } => {
             return Ok(Value::Primitive(value.clone()));
         }
