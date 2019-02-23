@@ -64,7 +64,7 @@ fn eval_stm(ctx: &mut Context, ast: &AstStatement) -> Result<Option<Value>, Opti
         AstStatement::Class(_) => {}
         AstStatement::Function(_) => {}
         AstStatement::Property(prop) => {
-            let name = &prop.vars.first().expect("Destructuration not implemented").name;
+            let name = &prop.var.name;
             let e = prop.expr.as_ref().expect("Var initialization");
             let value = eval_expr(ctx, e)?;
             ctx.new_ref(name, value);

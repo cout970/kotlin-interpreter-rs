@@ -57,7 +57,7 @@ pub struct AstVar {
 
 #[derive(Clone, PartialEq)]
 pub struct AstLocalProperty {
-    pub vars: Vec<AstVar>,
+    pub var: AstVar,
     pub delegated: bool,
     pub expr: Option<AstExpr>,
 }

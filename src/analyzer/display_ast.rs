@@ -223,21 +223,13 @@ impl Display for AstProperty {
 
 impl Display for AstLocalProperty {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        if self.vars.first().unwrap().mutable {
+        if self.var.mutable {
             write!(f, "var")?;
         } else {
             write!(f, "val")?;
         }
 
-        if self.vars.len() == 1 {
-            write!(f, " {:?} ", self.vars.first().unwrap())?;
-        } else {
-            write!(f, " (")?;
-            for x in &self.vars {
-                write!(f, "{:?} ", x)?;
-            }
-            write!(f, ") ")?;
-        }
+        write!(f, " {:?} ", self.var);
 
         if let Some(it) = &self.expr {
             if self.delegated {

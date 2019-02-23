@@ -235,9 +235,7 @@ fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<Type
 }
 
 fn visit_local_property(ctx: &mut Ctx, prop: &AstLocalProperty) {
-    let var = prop.vars.first().unwrap();
-
-    let mut ty = if let Some(ty) = &var.ty {
+    let mut ty = if let Some(ty) = &prop.var.ty {
         Some(visit_type(ctx, ty))
     } else {
         None
@@ -266,7 +264,7 @@ fn visit_local_property(ctx: &mut Ctx, prop: &AstLocalProperty) {
     }
 
     if let Some(ty) = ty {
-        ctx.register_variable(&var.name, &ty)
+        ctx.register_variable(&prop.var.name, &ty)
     }
 }
 

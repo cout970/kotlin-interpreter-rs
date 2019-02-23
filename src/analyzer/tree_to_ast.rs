@@ -135,8 +135,8 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
     )
 }
 
-fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
-    match statement {
+fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> Vec<AstStatement> {
+    let single = match statement {
         Statement::Expression(e) => AstStatement::Expr(expr_to_ast(ctx, e)),
         Statement::Assignment(first, op, second) => {
             let var = expr_to_ast(ctx, first);
@@ -172,7 +172,11 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                     AstStatement::Function(function_to_ast(ctx, fun))
                 }
                 Declaration::Property(prop) => {
-                    AstStatement::Property(property_to_local_ast(ctx, prop))
+                    let mut multiple = vec![];
+                    for prop in property_to_local_ast(ctx, prop) {
+                        multiple.push(AstStatement::Property(prop));
+                    }
+                    return multiple;
                 }
                 Declaration::TypeAlias(ta) => {
                     ctx.new_error(ta.span, AnalyserError::NestedTypeAlias);
@@ -207,7 +211,9 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                 body: block_to_ast(ctx, body),
             }
         }
-    }
+    };
+
+    vec![single]
 }
 
 fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
@@ -668,7 +674,7 @@ fn expr_to_block(e: AstExpr) -> AstBlock {
     }
 }
 
-fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty {
+fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> Vec<AstLocalProperty> {
     ctx.check_modifiers(prop.span, &prop.modifiers, ModifierTarget::Property);
     ctx.check_type_parameters(prop.span, &prop.type_parameters, &prop.type_constraints);
 
@@ -678,24 +684,64 @@ fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> AstLocalProperty
         PropertyInitialization::Delegation(expr) => (true, Some(expr_to_ast(ctx, expr))),
     };
 
-    let vars = if prop.declarations.len() == 1 {
-        let decl = prop.declarations.first().unwrap();
-        vec![AstVar {
-            name: decl.name.to_owned(),
-            ty: decl.declared_type.as_ref().map(|it| type_to_ast(ctx, it)),
-            mutable: prop.mutable,
-        }]
-    } else {
-        prop.declarations.iter()
-            .map(|decl| var_to_ast(ctx, prop.mutable, decl))
-            .collect()
-    };
+    let mut props = vec![];
+    let mut first_expr = expr;
 
-    AstLocalProperty {
-        vars,
-        expr,
-        delegated,
+    // If there are more than 1 variable, this is a destructuration, so the property is
+    // split into several and a new one is created to avoid multiples evaluations
+    // of the same expression
+    if prop.declarations.len() != 1 {
+        if let Some(first) = &first_expr {
+
+            props.push(AstLocalProperty {
+                var: AstVar {
+                    name: "_internal_destructuration_".to_string(),
+                    ty: None,
+                    mutable: false,
+                },
+                delegated: false,
+                expr: Some(first.clone()),
+            });
+
+            first_expr = Some(AstExpr::Ref {
+                span: get_span(first),
+                obj: None,
+                name: "_internal_destructuration_".to_string(),
+            })
+        }
     }
+
+    for (i, decl) in prop.declarations.iter().enumerate() {
+        let var = var_to_ast(ctx, prop.mutable, decl);
+
+        let expr = match &first_expr {
+            Some(first) => {
+
+                if prop.declarations.len() == 1 {
+                    // if there is only 1 var, use the initialization expression
+                    Some(first.clone())
+                } else {
+                    // if there are more than 1 vars, call componentN() over the initial expression
+                    Some(AstExpr::Call {
+                        span: get_span(first),
+                        receiver: Some(mut_rc(first.clone())),
+                        function: format!("component{}", i + 1),
+                        type_parameters: vec![],
+                        args: vec![],
+                    })
+                }
+            }
+            None => None,
+        };
+
+        props.push(AstLocalProperty {
+            var,
+            delegated,
+            expr,
+        })
+    }
+
+    props
 }
 
 fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
@@ -1256,7 +1302,9 @@ fn block_to_ast(ctx: &mut Context, block: &Block) -> AstBlock {
     let mut statements = vec![];
 
     for statement in &block.1 {
-        statements.push(statement_to_ast(ctx, statement));
+        for stm in statement_to_ast(ctx, statement) {
+            statements.push(stm);
+        }
     }
 
     AstBlock {
