@@ -709,10 +709,6 @@ fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         }
         Token::If => read_expr_if(s),
         Token::Try => read_expr_try(s),
-        Token::For => read_expr_for(s),
-        Token::While => read_expr_while(s),
-        // do {...} while(...) expression
-        Token::Do => read_expr_do_while(s),
         Token::When => read_expr_when(s),
         Token::Object => read_object_literal(s),
 
@@ -811,7 +807,7 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 }
 
 
-fn read_expr_for(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+fn read_statement_for(s: &mut TokenCursor) -> Result<Statement, KtError> {
 //    : "for" "(" annotations (multipleVariableDeclarations | variableDeclarationEntry) "in" expression ")" controlStructureBody
 //    ;
     let start = s.start();
@@ -824,15 +820,16 @@ fn read_expr_for(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     s.expect(Token::RightParen)?;
     let body = read_control_structure_body(s)?;
 
-    Ok(((start, s.end()), Expr::For {
+    Ok(Statement::For {
+        span: (start, s.end()),
         annotations,
         variables,
         expr,
         body,
-    }))
+    })
 }
 
-fn read_expr_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+fn read_statement_while(s: &mut TokenCursor) -> Result<Statement, KtError> {
 //    : "while" "(" expression ")" controlStructureBody
 //    ;
     let start = s.start();
@@ -842,13 +839,14 @@ fn read_expr_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     s.expect(Token::RightParen)?;
     let body = read_control_structure_body(s)?;
 
-    Ok(((start, s.end()), Expr::While {
+    Ok(Statement::While {
+        span: (start, s.end()),
         expr,
         body,
-    }))
+    })
 }
 
-fn read_expr_do_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
+fn read_statement_do_while(s: &mut TokenCursor) -> Result<Statement, KtError> {
 //    : "do" controlStructureBody "while" "(" expression ")"
 //    ;
     let start = s.start();
@@ -859,10 +857,11 @@ fn read_expr_do_while(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let expr = Arc::new(read_expresion(s)?);
     s.expect(Token::RightParen)?;
 
-    Ok(((start, s.end()), Expr::DoWhile {
+    Ok(Statement::DoWhile {
+        span: (start, s.end()),
         expr,
         body,
-    }))
+    })
 }
 
 fn read_expr_when(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
@@ -1421,6 +1420,12 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
             s.read_token(0) == Token::Interface ||
             s.read_token(0) == Token::TypeAlias {
             Ok(Statement::Declaration(read_declaration(s, modifiers)?))
+        } else if s.read_token(0) == Token::For {
+            Ok(read_statement_for(s)?)
+        } else if s.read_token(0) == Token::Do {
+            Ok(read_statement_do_while(s)?)
+        } else if s.read_token(0) == Token::While {
+            Ok(read_statement_while(s)?)
         } else {
             // expressions don't have modifiers, so we go back to the original state
             s.restore(save);

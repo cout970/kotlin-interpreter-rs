@@ -154,6 +154,22 @@ pub enum AstStatement {
     Class(AstClass),
     Function(AstFunction),
     Property(AstLocalProperty),
+    For {
+        span: Span,
+        variables: Vec<AstVar>,
+        expr: MutRc<AstExpr>,
+        body: AstBlock,
+    },
+    While {
+        span: Span,
+        expr: MutRc<AstExpr>,
+        body: AstBlock,
+    },
+    DoWhile {
+        span: Span,
+        expr: MutRc<AstExpr>,
+        body: AstBlock,
+    },
 }
 
 #[derive(Clone, PartialEq)]
@@ -208,22 +224,6 @@ pub enum AstExpr {
         cond: MutRc<AstExpr>,
         if_true: AstBlock,
         if_false: Option<AstBlock>,
-    },
-    For {
-        span: Span,
-        variables: Vec<AstVar>,
-        expr: MutRc<AstExpr>,
-        body: AstBlock,
-    },
-    While {
-        span: Span,
-        expr: MutRc<AstExpr>,
-        body: AstBlock,
-    },
-    DoWhile {
-        span: Span,
-        expr: MutRc<AstExpr>,
-        body: AstBlock,
     },
     Continue {
         span: Span,

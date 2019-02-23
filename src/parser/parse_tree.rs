@@ -198,20 +198,6 @@ pub enum Expr {
         catch_blocks: Vec<CatchBlock>,
         finally: Option<Block>,
     },
-    For {
-        annotations: Vec<Annotation>,
-        variables: Vec<VariableDeclarationEntry>,
-        expr: ExprRef,
-        body: Block,
-    },
-    While {
-        expr: ExprRef,
-        body: Block,
-    },
-    DoWhile {
-        expr: ExprRef,
-        body: Block,
-    },
     When {
         expr: Option<ExprRef>,
         entries: Vec<WhenEntry>,
@@ -309,6 +295,23 @@ pub enum Statement {
     Expression(ExprVal),
     Assignment(ExprVal, String, ExprVal),
     Declaration(Declaration),
+    For {
+        span: Span,
+        annotations: Vec<Annotation>,
+        variables: Vec<VariableDeclarationEntry>,
+        expr: ExprRef,
+        body: Block,
+    },
+    While {
+        span: Span,
+        expr: ExprRef,
+        body: Block,
+    },
+    DoWhile {
+        span: Span,
+        expr: ExprRef,
+        body: Block,
+    },
 }
 
 #[derive(Clone, PartialEq, Debug)]

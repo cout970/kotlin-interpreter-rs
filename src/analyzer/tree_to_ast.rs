@@ -177,6 +177,29 @@ fn statement_to_ast(ctx: &mut Context, statement: &Statement) -> AstStatement {
                 }
             }
         }
+        Statement::For { span, variables, expr, body, .. } => {
+            let variables = variables.iter().map(|it| var_to_ast(ctx, false, it)).collect::<Vec<_>>();
+            AstStatement::For {
+                span: *span,
+                variables,
+                expr: mut_rc(expr_to_ast(ctx, expr)),
+                body: block_to_ast(ctx, body),
+            }
+        }
+        Statement::While { span, expr, body } => {
+            AstStatement::While {
+                span: *span,
+                expr: mut_rc(expr_to_ast(ctx, expr)),
+                body: block_to_ast(ctx, body),
+            }
+        }
+        Statement::DoWhile { span, expr, body } => {
+            AstStatement::DoWhile {
+                span: *span,
+                expr: mut_rc(expr_to_ast(ctx, expr)),
+                body: block_to_ast(ctx, body),
+            }
+        }
     }
 }
 
@@ -748,29 +771,6 @@ fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
                 if_false: if_false.as_ref().map(|it| block_to_ast(ctx, &it)),
             }
         }
-        Expr::For { variables, expr, body, .. } => {
-            let variables = variables.iter().map(|it| var_to_ast(ctx, false, it)).collect::<Vec<_>>();
-            AstExpr::For {
-                span,
-                variables,
-                expr: mut_rc(expr_to_ast(ctx, expr)),
-                body: block_to_ast(ctx, body),
-            }
-        }
-        Expr::While { expr, body } => {
-            AstExpr::While {
-                span,
-                expr: mut_rc(expr_to_ast(ctx, expr)),
-                body: block_to_ast(ctx, body),
-            }
-        }
-        Expr::DoWhile { expr, body } => {
-            AstExpr::DoWhile {
-                span,
-                expr: mut_rc(expr_to_ast(ctx, expr)),
-                body: block_to_ast(ctx, body),
-            }
-        }
         Expr::String(parts) => {
             convert_string_template_to_expr(ctx, span, parts)
         }
@@ -1294,9 +1294,6 @@ fn get_span(expr: &AstExpr) -> Span {
         AstExpr::Call { span, .. } => *span,
         AstExpr::Is { span, .. } => *span,
         AstExpr::If { span, .. } => *span,
-        AstExpr::For { span, .. } => *span,
-        AstExpr::While { span, .. } => *span,
-        AstExpr::DoWhile { span, .. } => *span,
         AstExpr::Continue { span, .. } => *span,
         AstExpr::Break { span, .. } => *span,
         AstExpr::Throw { span, .. } => *span,

@@ -69,6 +69,7 @@ fn eval_stm(ctx: &mut Context, ast: &AstStatement) -> Result<Option<Value>, Opti
             let value = eval_expr(ctx, e)?;
             ctx.new_ref(name, value);
         }
+        _ => {}
     }
     Ok(None)
 }
@@ -103,9 +104,6 @@ fn eval_expr(ctx: &mut Context, ast: &AstExpr) -> Result<Value, Option<Value>> {
                 }
             }
         }
-        AstExpr::For { .. } => {}
-        AstExpr::While { .. } => {}
-        AstExpr::DoWhile { .. } => {}
         AstExpr::Continue { .. } => {}
         AstExpr::Break { .. } => {}
         AstExpr::Try { .. } => {}
@@ -175,28 +173,28 @@ fn add(a: Value, b: Value) -> Value {
     Value::Primitive(Constant::Int(as_int(a) + as_int(b)))
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::interpreter::ast_walker::Context;
-    use crate::interpreter::ast_walker::eval_block;
-    use crate::interpreter::ast_walker::eval_expr;
-    use crate::test_utils::assert_correct_ast;
-
-    #[test]
-    #[ignore]
-    fn sum() {
-        let file = assert_correct_ast(r#"
-            fun test() {
-                val b = 321 + 6 / 3
-                var a = 0
-                a = b
-                a
-            }
-        "#);
-        let main_func = file.ast.functions.first().unwrap();
-        let body = &main_func.body.as_ref().unwrap().clone();
-        let mut ctx = Context::new();
-        let value = eval_block(&mut ctx, body);
-        dbg!(value);
-    }
-}
+//#[cfg(test)]
+//mod tests {
+//    use crate::interpreter::ast_walker::Context;
+//    use crate::interpreter::ast_walker::eval_block;
+//    use crate::interpreter::ast_walker::eval_expr;
+//    use crate::test_utils::assert_correct_ast;
+//
+//    #[test]
+//    #[ignore]
+//    fn sum() {
+//        let file = assert_correct_ast(r#"
+//            fun test() {
+//                val b = 321 + 6 / 3
+//                var a = 0
+//                a = b
+//                a
+//            }
+//        "#);
+//        let main_func = file.ast.functions.first().unwrap();
+//        let body = &main_func.body.as_ref().unwrap().clone();
+//        let mut ctx = Context::new();
+//        let value = eval_block(&mut ctx, body);
+//        dbg!(value);
+//    }
+//}

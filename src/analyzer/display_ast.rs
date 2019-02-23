@@ -321,20 +321,6 @@ impl Display for AstExpr {
                     write!(f, "else {:?} ", it)?;
                 }
             }
-            AstExpr::For { variables, expr, body, .. } => {
-                write!(f, "for (", )?;
-                for x in variables {
-                    write!(f, "{:?} ", x)?;
-                }
-                write!(f, "in {:?}", expr.borrow())?;
-                write!(f, ") {:?}", body)?;
-            }
-            AstExpr::While { expr, body, .. } => {
-                write!(f, "while ({:?}) {:?}", expr.borrow(), body)?;
-            }
-            AstExpr::DoWhile { expr, body, .. } => {
-                write!(f, "do {:?} while ({:?})", body, expr.borrow())?;
-            }
             AstExpr::Continue { .. } => {
                 write!(f, "continue")?;
             }
@@ -381,6 +367,20 @@ impl Display for AstStatement {
             AstStatement::Function(it) => { write!(f, "{:#?}", it)?; }
             AstStatement::Property(it) => { write!(f, "{:#?}", it)?; }
             AstStatement::Assignment(a, b) => { write!(f, "{:#?} = {:#?}", a, b)?; }
+            AstStatement::For { variables, expr, body, .. } => {
+                write!(f, "for (", )?;
+                for x in variables {
+                    write!(f, "{:?} ", x)?;
+                }
+                write!(f, "in {:?}", expr.borrow())?;
+                write!(f, ") {:?}", body)?;
+            }
+            AstStatement::While { expr, body, .. } => {
+                write!(f, "while ({:?}) {:?}", expr.borrow(), body)?;
+            }
+            AstStatement::DoWhile { expr, body, .. } => {
+                write!(f, "do {:?} while ({:?})", body, expr.borrow())?;
+            }
         }
         Ok(())
     }

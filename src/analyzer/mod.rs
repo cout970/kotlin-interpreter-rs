@@ -1,9 +1,8 @@
 //pub mod semantic_rules;
-pub mod typechecker;
+//pub mod typechecker;
 pub mod ast;
 pub mod tree_to_ast;
 mod modifiers;
-mod mutable_tree_visitor;
 mod display_ast;
 mod type_parameters;
 

@@ -178,6 +178,9 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
             AstStatement::Class(_) => { unimplemented!("class") }
             AstStatement::Function(fun) => { visit_function(ctx, fun); }
             AstStatement::Property(_) => { unimplemented!("property") }
+            AstStatement::For { .. } => {}
+            AstStatement::While { .. } => {}
+            AstStatement::DoWhile { .. } => {}
         }
     }
     ret
