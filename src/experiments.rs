@@ -2,12 +2,7 @@ use std::collections::HashMap;
 
 use itertools::Itertools;
 
-use crate::analyzer::ast::AstBlock;
-use crate::analyzer::ast::AstFile;
-use crate::analyzer::ast::AstFunction;
-use crate::analyzer::ast::AstStatement;
-use crate::analyzer::ast::AstType;
-use crate::analyzer::ast::AstVar;
+use crate::analyzer::ast::*;
 use crate::source_code::SourceCode;
 
 // Signatures: unique identifiers for types and functions
@@ -178,16 +173,28 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
             AstStatement::Class(_) => { unimplemented!("class") }
             AstStatement::Function(fun) => { visit_function(ctx, fun); }
             AstStatement::Property(_) => { unimplemented!("property") }
-            AstStatement::For { .. } => {}
-            AstStatement::While { .. } => {}
-            AstStatement::DoWhile { .. } => {}
+            AstStatement::For { .. } => { unimplemented!("loop") }
+            AstStatement::While { .. } => { unimplemented!("loop") }
+            AstStatement::DoWhile { .. } => { unimplemented!("loop") }
         }
     }
     ret
 }
 
-fn visit_expression(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
-    unimplemented!("expression")
+fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
+    match *expr {
+        AstExpr::Block { .. } => {},
+        AstExpr::Constant { .. } => {},
+        AstExpr::Ref { .. } => {},
+        AstExpr::Call { .. } => {},
+        AstExpr::Is { .. } => {},
+        AstExpr::If { .. } => {},
+        AstExpr::Continue { .. } => {},
+        AstExpr::Break { .. } => {},
+        AstExpr::Try { .. } => {},
+        AstExpr::Throw { .. } => {},
+        AstExpr::Return { .. } => {},
+    }
 }
 
 #[cfg(test)]

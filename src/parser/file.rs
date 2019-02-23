@@ -1427,8 +1427,6 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
         } else if s.read_token(0) == Token::While {
             Ok(read_statement_while(s)?)
         } else {
-            // expressions don't have modifiers, so we go back to the original state
-            s.restore(save);
             let stm = read_statement_expr(s)?;
 
             Ok(stm)
