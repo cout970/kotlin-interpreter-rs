@@ -55,7 +55,7 @@ class F {
 }
 
 //fun test_fib(a: Int) = if (a > 0) test_fib(a - 1) else 1
-fun test_fib(a: Int) = if (a > 0) 1 else test_fib(a - 1)
+//fun test_fib(a: Int) = if (a > 0) 1 else test_fib(a - 1)
 
 fun fibonacci(x: Int): Int = when (x) {
     0, 1 -> 1
@@ -68,6 +68,13 @@ val a: Int
 fun test() {
     val a: Int by 0
     var out = 0
+
+//    val (c: Int, b: Float) = listOf(1, 2)
+//    //
+//    val aux = listOf(1, 2)
+//    val c: Int = aux.component1()
+//    val b: Int = aux.component2()
+
 
     out = 0
 

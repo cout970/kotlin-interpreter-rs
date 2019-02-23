@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use itertools::Itertools;
 
 use crate::analyzer::ast::*;
+use crate::analyzer::tree_to_ast::NOTHING_TYPE;
+use crate::analyzer::tree_to_ast::UNIT_TYPE;
+use crate::interpreter::bytecode::Constant;
 use crate::source_code::SourceCode;
 
 // Signatures: unique identifiers for types and functions
@@ -92,6 +95,22 @@ fn type_signature_of(name: &str) -> TypeSig {
     name.to_string()
 }
 
+fn type_signature_of_constant(constant: &Constant) -> Option<TypeSig> {
+    match constant {
+        Constant::Null => None,
+        Constant::Array(_) => Some(type_signature_of("Array")),
+        Constant::Boolean(_) => Some(type_signature_of("Boolean")),
+        Constant::Double(_) => Some(type_signature_of("Double")),
+        Constant::Float(_) => Some(type_signature_of("Float")),
+        Constant::Byte(_) => Some(type_signature_of("Byte")),
+        Constant::Short(_) => Some(type_signature_of("Short")),
+        Constant::Int(_) => Some(type_signature_of("Int")),
+        Constant::Long(_) => Some(type_signature_of("Long")),
+        Constant::Char(_) => Some(type_signature_of("Char")),
+        Constant::String(_) => Some(type_signature_of("String")),
+    }
+}
+
 fn visit_function(ctx: &mut Ctx, func: &AstFunction) -> FunctionSig {
     ctx.enter_block();
 
@@ -166,13 +185,20 @@ fn visit_type(ctx: &mut Ctx, ty: &AstType) -> TypeSig {
 
 fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
     let mut ret = None;
-    for stm in &block.statements {
+    for (i, stm) in block.statements.iter().enumerate() {
         match stm {
-            AstStatement::Expr(_) => { unimplemented!("expression") }
+            AstStatement::Expr(expr) => {
+                let r = visit_expression(ctx, expr, expected_return);
+
+                // Are we in a lambda?
+                if i == block.statements.len() - 1 {
+                    ret = r;
+                }
+            }
             AstStatement::Assignment(_, _) => { unimplemented!("assigment") }
             AstStatement::Class(_) => { unimplemented!("class") }
             AstStatement::Function(fun) => { visit_function(ctx, fun); }
-            AstStatement::Property(_) => { unimplemented!("property") }
+            AstStatement::Property(prop) => { visit_local_property(ctx, prop) }
             AstStatement::For { .. } => { unimplemented!("loop") }
             AstStatement::While { .. } => { unimplemented!("loop") }
             AstStatement::DoWhile { .. } => { unimplemented!("loop") }
@@ -182,20 +208,66 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
 }
 
 fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
-//    match *expr {
-//        AstExpr::Block { .. } => {},
-//        AstExpr::Constant { .. } => {},
-//        AstExpr::Ref { .. } => {},
-//        AstExpr::Call { .. } => {},
-//        AstExpr::Is { .. } => {},
-//        AstExpr::If { .. } => {},
-//        AstExpr::Continue { .. } => {},
-//        AstExpr::Break { .. } => {},
-//        AstExpr::Try { .. } => {},
-//        AstExpr::Throw { .. } => {},
-//        AstExpr::Return { .. } => {},
-//    }
-    unimplemented!()
+    match expr {
+        AstExpr::Constant { value, .. } => {
+            type_signature_of_constant(value)
+        }
+        AstExpr::Ref { .. } => { unimplemented!("ref") }
+        AstExpr::Call { .. } => { unimplemented!("call") }
+        AstExpr::If { .. } => { unimplemented!("if") }
+        AstExpr::Try { .. } => { unimplemented!("try") }
+        AstExpr::Is { .. } => { type_signature_of_constant(&Constant::Boolean(false)) }
+        AstExpr::Continue { .. } => { Some(visit_type(ctx, &UNIT_TYPE)) }
+        AstExpr::Break { .. } => { Some(visit_type(ctx, &UNIT_TYPE)) }
+        AstExpr::Throw { .. } => { Some(visit_type(ctx, &NOTHING_TYPE)) }
+        AstExpr::Return { value, .. } => {
+            match value {
+                Some(expr) => {
+                    visit_expression(ctx, &expr.borrow(), expected_return)
+                }
+                None => Some(visit_type(ctx, &NOTHING_TYPE))
+            }
+        }
+        AstExpr::Lambda { .. } => { unimplemented!("Lambda") }
+        AstExpr::AnonymousFunction { .. } => { unimplemented!("AnonymousFunction") }
+        AstExpr::ObjectLiteral { .. } => { unimplemented!("ObjectLiteral") }
+    }
+}
+
+fn visit_local_property(ctx: &mut Ctx, prop: &AstLocalProperty) {
+    let var = prop.vars.first().unwrap();
+
+    let mut ty = if let Some(ty) = &var.ty {
+        Some(visit_type(ctx, ty))
+    } else {
+        None
+    };
+
+    if let Some(expr) = &prop.expr {
+        let sig = visit_expression(ctx, expr, &ty);
+
+        match &ty {
+            Some(ty) => {
+//                if sig != ty {
+//                    // error mismatch of types
+//                }
+            }
+            None => {
+                match sig {
+                    Some(sig) => {
+                        ty = Some(sig);
+                    }
+                    None => {
+                        // error, no type defined nor inferred
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(ty) = ty {
+        ctx.register_variable(&var.name, &ty)
+    }
 }
 
 #[cfg(test)]
@@ -208,9 +280,7 @@ mod tests {
     fn simple_func() {
         let (code, ast) = assert_correct_ast2(r#"
             fun test() {
-                val b = 321 + 6 / 3
                 var a = 0
-                a = b
                 a
             }
         "#);

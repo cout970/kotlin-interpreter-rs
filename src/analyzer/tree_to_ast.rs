@@ -27,10 +27,17 @@ enum EnvType {
 }
 
 lazy_static! {
-    static ref UNIT_TYPE: AstType = AstType {
+    pub static ref UNIT_TYPE: AstType = AstType {
         span: (0, 0),
         name: "Unit".to_string(),
         full_name: "kotlin.Unit".to_string(),
+        type_parameters: Vec::new(),
+        nullable: false,
+    };
+    pub static ref NOTHING_TYPE: AstType = AstType {
+        span: (0, 0),
+        name: "Nothing".to_string(),
+        full_name: "kotlin.Nothing".to_string(),
         type_parameters: Vec::new(),
         nullable: false,
     };
