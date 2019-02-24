@@ -12,11 +12,19 @@ use crate::source_code::SourceCode;
 type TypeSig = String;
 type FunctionSig = String;
 
+#[derive(Debug, Clone, Default)]
+struct TypeInfo {
+    name: String,
+    parent: Option<TypeSig>,
+    interfaces: Vec<TypeSig>,
+    functions: HashMap<String, TypeSig>,
+}
+
 #[derive(Debug)]
 struct Scope {
-    types: HashMap<String, ()>,
-    functions: HashMap<String, String>,
-    variables: HashMap<String, String>,
+    types: HashMap<String, TypeInfo>,
+    functions: HashMap<FunctionSig, (String, TypeSig)>,
+    variables: HashMap<String, TypeSig>,
 }
 
 #[derive(Debug)]
@@ -50,17 +58,39 @@ impl Ctx {
     }
 
     fn register_function(&mut self, name: &str, signature: &FunctionSig, ret: &str) {
-        self.last_scope().functions.insert(signature.to_string(), ret.to_string());
+        self.last_scope().functions.insert(signature.to_string(), (name.to_string(), ret.to_string()));
     }
 
     fn register_variable(&mut self, name: &str, signature: &TypeSig) {
         self.last_scope().variables.insert(name.to_string(), signature.to_string());
     }
 
-    fn get_type_info(&mut self, sig: &str) -> Option<()> {
+    fn register_type_info(&mut self, signature: &TypeSig, info: TypeInfo) {
+        self.last_scope().types.insert(signature.to_string(), info);
+    }
+
+    fn get_type_info(&mut self, sig: &str) -> Option<TypeInfo> {
         for scope in self.blocks.iter().rev() {
             if let Some(info) = scope.types.get(sig) {
                 return Some(info.clone());
+            }
+        }
+        None
+    }
+
+    fn get_type_signature_for_name(&mut self, name: &str) -> Option<String> {
+        for scope in self.blocks.iter().rev() {
+            if let Some(sig) = scope.variables.get(name) {
+                return Some(sig.clone());
+            }
+        }
+        None
+    }
+
+    fn get_function_return_by_signature(&mut self, sig: &str) -> Option<String> {
+        for scope in self.blocks.iter().rev() {
+            if let Some((name, ret)) = scope.functions.get(sig) {
+                return Some(ret.clone());
             }
         }
         None
@@ -70,44 +100,60 @@ impl Ctx {
 pub fn run_experiments(code: SourceCode, ast: &AstFile) {
     let mut ctx = Ctx::new();
 
+    for class in &ast.classes {
+        visit_class(&mut ctx, class);
+    }
+
     for func in &ast.functions {
         visit_function(&mut ctx, func);
+    }
+
+    for prop in &ast.properties {
+        visit_property(&mut ctx, prop);
     }
 
     dbg!(ctx);
 }
 
-fn function_signature_of(name: &str, args: &Vec<TypeSig>) -> FunctionSig {
-    let mut sig = String::new();
-    sig.push_str(name);
-    sig.push('(');
-    for (i, arg) in args.iter().enumerate() {
-        sig.push_str(arg);
-        if i != args.len() - 1 {
-            sig.push(',');
-        }
+fn visit_class(ctx: &mut Ctx, class: &AstClass) {
+    let sig = type_signature_of(&class.name);
+    let name = class.name.to_string();
+    let parent = class.super_type.as_ref()
+        .map(|i| visit_type(ctx, i));
+
+    let mut interfaces = vec![];
+    for i in &class.interfaces {
+        interfaces.push(visit_type(ctx, i));
     }
-    sig.push(')');
-    sig
+
+    let mut info = TypeInfo { name, parent, interfaces, ..TypeInfo::default() };
+    ctx.enter_block();
+    ctx.register_variable(&"this".to_string(), &sig);
+
+    for member in &class.body {
+        visit_member(ctx, member);
+    }
+
+    let scope = ctx.last_scope();
+
+    for (sig, (name, ret)) in scope.functions.iter() {
+        info.functions.insert(name.to_string(), sig.to_string());
+    }
+
+    ctx.exit_block();
+    ctx.register_type_info(&sig, info);
+
+    if class.class_type != AstClassType::Object {
+        let ctor = function_signature_of(&class.name, &vec![]);
+        ctx.register_function(&class.name, &ctor, &sig);
+    }
 }
 
-fn type_signature_of(name: &str) -> TypeSig {
-    name.to_string()
-}
-
-fn type_signature_of_constant(constant: &Constant) -> Option<TypeSig> {
-    match constant {
-        Constant::Null => None,
-        Constant::Array(_) => Some(type_signature_of("Array")),
-        Constant::Boolean(_) => Some(type_signature_of("Boolean")),
-        Constant::Double(_) => Some(type_signature_of("Double")),
-        Constant::Float(_) => Some(type_signature_of("Float")),
-        Constant::Byte(_) => Some(type_signature_of("Byte")),
-        Constant::Short(_) => Some(type_signature_of("Short")),
-        Constant::Int(_) => Some(type_signature_of("Int")),
-        Constant::Long(_) => Some(type_signature_of("Long")),
-        Constant::Char(_) => Some(type_signature_of("Char")),
-        Constant::String(_) => Some(type_signature_of("String")),
+fn visit_member(ctx: &mut Ctx, member: &AstMember) {
+    match member {
+        AstMember::Class(class) => { visit_class(ctx, class); }
+        AstMember::Function(func) => { visit_function(ctx, func); }
+        AstMember::Property(prop) => { visit_property(ctx, prop); }
     }
 }
 
@@ -196,7 +242,7 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
                 }
             }
             AstStatement::Assignment(_, _) => { unimplemented!("assigment") }
-            AstStatement::Class(_) => { unimplemented!("class") }
+            AstStatement::Class(class) => { visit_class(ctx, class) }
             AstStatement::Function(fun) => { visit_function(ctx, fun); }
             AstStatement::Property(prop) => { visit_local_property(ctx, prop) }
             AstStatement::For { .. } => { unimplemented!("loop") }
@@ -210,13 +256,60 @@ fn visit_block(ctx: &mut Ctx, block: &AstBlock, expected_return: &Option<TypeSig
 fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
     match expr {
         AstExpr::Constant { value, .. } => {
-            type_signature_of_constant(value)
+            Some(type_signature_of_constant(value))
         }
-        AstExpr::Ref { .. } => { unimplemented!("ref") }
-        AstExpr::Call { .. } => { unimplemented!("call") }
+        AstExpr::Ref { obj, name, .. } => {
+            match obj {
+                Some(obj) => {
+                    unimplemented!("member access")
+                }
+                None => {
+                    match ctx.get_type_signature_for_name(name) {
+                        Some(sig) => Some(sig),
+                        None => {
+                            // error, unknown name
+                            None
+                        }
+                    }
+                }
+            }
+        }
+        AstExpr::Call { receiver, function, args, .. } => {
+            match receiver {
+                Some(rec) => {
+                    let sig = visit_expression(ctx, &rec.borrow(), &None);
+                    match sig {
+                        Some(sig) => {
+                            match ctx.get_type_info(&sig) {
+                                Some(it) => {
+                                    match it.functions.get(function) {
+                                        Some(sig) => call_function(ctx, sig, args, expected_return),
+                                        None => {
+                                            // error, missing method
+                                            None
+                                        }
+                                    }
+                                }
+                                None => {
+                                    // error missing type
+                                    None
+                                }
+                            }
+                        }
+                        None => {
+                            // error propagation, probably can be ignored
+                            None
+                        }
+                    }
+                }
+                None => {
+                    call_function(ctx, function, args, expected_return)
+                }
+            }
+        }
         AstExpr::If { .. } => { unimplemented!("if") }
         AstExpr::Try { .. } => { unimplemented!("try") }
-        AstExpr::Is { .. } => { type_signature_of_constant(&Constant::Boolean(false)) }
+        AstExpr::Is { .. } => { Some(type_signature_of_constant(&Constant::Boolean(false))) }
         AstExpr::Continue { .. } => { Some(visit_type(ctx, &UNIT_TYPE)) }
         AstExpr::Break { .. } => { Some(visit_type(ctx, &UNIT_TYPE)) }
         AstExpr::Throw { .. } => { Some(visit_type(ctx, &NOTHING_TYPE)) }
@@ -231,6 +324,31 @@ fn visit_expression(ctx: &mut Ctx, expr: &AstExpr, expected_return: &Option<Type
         AstExpr::Lambda { .. } => { unimplemented!("Lambda") }
         AstExpr::AnonymousFunction { .. } => { unimplemented!("AnonymousFunction") }
         AstExpr::ObjectLiteral { .. } => { unimplemented!("ObjectLiteral") }
+    }
+}
+
+fn call_function(ctx: &mut Ctx, function: &String, args: &Vec<AstExpr>, expected_return: &Option<TypeSig>) -> Option<TypeSig> {
+    let args_sig = args.iter()
+        .map(|a| visit_expression(ctx, a, &None).unwrap())
+        .collect_vec();
+
+    let mut sig = function_signature_of(function, &args_sig);
+
+    // If there is a local variable with type function, we call that first
+    if let Some(ty_sig) = ctx.get_type_signature_for_name(function) {
+        if is_function_type(&ty_sig) {
+            sig = function_signature_of("invoke", &args_sig); // type signature of invoke for this type
+        }
+    }
+
+    match ctx.get_function_return_by_signature(&sig) {
+        Some(ret) => {
+            Some(ret)
+        }
+        None => {
+            // error
+            None
+        }
     }
 }
 
@@ -268,6 +386,78 @@ fn visit_local_property(ctx: &mut Ctx, prop: &AstLocalProperty) {
     }
 }
 
+fn visit_property(ctx: &mut Ctx, prop: &AstProperty) {
+    let mut ty = if let Some(ty) = &prop.var.ty {
+        Some(visit_type(ctx, ty))
+    } else {
+        None
+    };
+
+    if let Some(expr) = &prop.expr {
+        let sig = visit_expression(ctx, expr, &ty);
+
+        match &ty {
+            Some(ty) => {
+//                if sig != ty {
+//                    // error mismatch of types
+//                }
+            }
+            None => {
+                match sig {
+                    Some(sig) => {
+                        ty = Some(sig);
+                    }
+                    None => {
+                        // error, no type defined nor inferred
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(ty) = ty {
+        ctx.register_variable(&prop.var.name, &ty)
+    }
+}
+
+fn function_signature_of(name: &str, args: &Vec<TypeSig>) -> FunctionSig {
+    let mut sig = String::new();
+    sig.push_str(name);
+    sig.push('(');
+    for (i, arg) in args.iter().enumerate() {
+        sig.push_str(arg);
+        if i != args.len() - 1 {
+            sig.push(',');
+        }
+    }
+    sig.push(')');
+    sig
+}
+
+fn type_signature_of(name: &str) -> TypeSig {
+    name.to_string()
+}
+
+fn type_signature_of_constant(constant: &Constant) -> TypeSig {
+    match constant {
+        Constant::Null => type_signature_of("Nothing?"),
+        Constant::Array(_) => type_signature_of("Array"),
+        Constant::Boolean(_) => type_signature_of("Boolean"),
+        Constant::Double(_) => type_signature_of("Double"),
+        Constant::Float(_) => type_signature_of("Float"),
+        Constant::Byte(_) => type_signature_of("Byte"),
+        Constant::Short(_) => type_signature_of("Short"),
+        Constant::Int(_) => type_signature_of("Int"),
+        Constant::Long(_) => type_signature_of("Long"),
+        Constant::Char(_) => type_signature_of("Char"),
+        Constant::String(_) => type_signature_of("String"),
+    }
+}
+
+fn is_function_type(sig: &TypeSig) -> bool {
+    sig.contains("->")
+}
+
 #[cfg(test)]
 mod tests {
     use crate::test_utils::assert_correct_ast2;
@@ -279,7 +469,7 @@ mod tests {
         let (code, ast) = assert_correct_ast2(r#"
             fun test() {
                 var a = 0
-                a
+                println(a)
             }
         "#);
         run_experiments(code, &ast);
@@ -289,6 +479,57 @@ mod tests {
     fn simple_func2() {
         let (code, ast) = assert_correct_ast2(r#"
             fun test() = 0
+        "#);
+        run_experiments(code, &ast);
+    }
+
+    #[test]
+    fn simple_destructuration() {
+        let (code, ast) = assert_correct_ast2(r#"
+            fun test() {
+                val (a, b) = 10 to 30
+                println(a)
+            }
+        "#);
+        run_experiments(code, &ast);
+    }
+
+    #[test]
+    fn simple_local_var() {
+        let (code, ast) = assert_correct_ast2(r#"
+            fun test() {
+                var a: Int = false
+            }
+        "#);
+        run_experiments(code, &ast);
+    }
+
+    #[test]
+    fn simple_class() {
+        let (code, ast) = assert_correct_ast2(r#"
+            class Test
+        "#);
+        run_experiments(code, &ast);
+    }
+
+    #[test]
+    fn simple_class2() {
+        let (code, ast) = assert_correct_ast2(r#"
+            class Test: Test2
+        "#);
+        run_experiments(code, &ast);
+    }
+
+    #[test]
+    fn simple_class_with_members() {
+        let (code, ast) = assert_correct_ast2(r#"
+            class Test {
+                fun test(): Int
+            }
+
+            fun test2(): Int {
+               return Test().test()
+            }
         "#);
         run_experiments(code, &ast);
         panic!()

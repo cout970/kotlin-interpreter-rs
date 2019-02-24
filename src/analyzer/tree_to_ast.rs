@@ -11,6 +11,7 @@ use crate::Number;
 use crate::parser::parse_tree::*;
 use crate::source_code::SourceCode;
 use crate::source_code::Span;
+use crate::generate_rand_str;
 
 struct Context {
     code: SourceCode,
@@ -693,9 +694,11 @@ fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> Vec<AstLocalProp
     if prop.declarations.len() != 1 {
         if let Some(first) = &first_expr {
 
+            let name = format!("_destruct_{}", generate_rand_str());
+
             props.push(AstLocalProperty {
                 var: AstVar {
-                    name: "_internal_destructuration_".to_string(),
+                    name: name.to_string(),
                     ty: None,
                     mutable: false,
                 },
@@ -706,8 +709,8 @@ fn property_to_local_ast(ctx: &mut Context, prop: &Property) -> Vec<AstLocalProp
             first_expr = Some(AstExpr::Ref {
                 span: get_span(first),
                 obj: None,
-                name: "_internal_destructuration_".to_string(),
-            })
+                name,
+            });
         }
     }
 

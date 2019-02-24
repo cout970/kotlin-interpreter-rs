@@ -62,6 +62,8 @@ fun fibonacci(x: Int): Int = when (x) {
     else -> fibonacci(x - 1) + fibonacci(x - 2)
 }
 
+fun type_of_null() = null
+
 val a: Int
     get() = a
 
@@ -74,6 +76,12 @@ fun test() {
 //    val aux = listOf(1, 2)
 //    val c: Int = aux.component1()
 //    val b: Int = aux.component2()
+
+    operator fun Int.iterator(): Iterator<Int> = (0..(this - 1)).iterator()
+
+    for (i in 10) {
+
+    }
 
 
     out = 0
@@ -98,6 +106,8 @@ operator fun Int.getValue(a: Int?, prop: kotlin.reflect.KProperty<*>): Int {
     return 0
 }
 
+
+
 class MyBox<T>(private val value: T?) {
 
     fun get() = value!!
@@ -108,12 +118,30 @@ class MyBox<T>(private val value: T?) {
         null -> this
         else -> MyBox(func(value))
     }
-
-    sealed class Result<T> {
-        object Err : Result<Nothing>()
-        class Ok<T>(val value: T) : Result<T>()
-    }
 }
+
+sealed class Result<A, B>
+class Ok<T, E>(val value: T) : Result<T, E>()
+class Err<T, E>(val value: T) : Result<T, E>()
+
+sealed class Option<T>
+class Some<T>(val value: T) : Option<T>()
+object None : Option<Nothing>() {
+    fun <T> cast(): Option<T> = None as Option<T>
+}
+
+fun getOpt(): Option<Int> = match(None as Option<Int>)
+
+fun match(value: Option<Int>): Option<Int> = when(value){
+    is Some -> Some(value.value)
+    else -> None.cast()
+}
+
+fun match(value: Result<Int, Int> = Err(0)): Option<Int> = when(value){
+    is Ok -> Some(value.value)
+    is Err -> None.cast()
+}
+
 
 //var <T> List<T>.first: T? = null
 //    get() = this[0]

@@ -13,6 +13,7 @@ use std::path::Path;
 
 use crate::source_code::from_str;
 use crate::source_code::SourceCode;
+use rand::Rng;
 
 pub mod source_code;
 pub mod tokenizer;
@@ -81,6 +82,19 @@ fn vec_with<T: Clone>(vec: &Vec<T>, new: T) -> Vec<T> {
     let mut new_vec = vec.clone();
     new_vec.push(new);
     new_vec
+}
+
+fn generate_rand_str() -> String {
+    let mut rng = rand::thread_rng();
+    let mut data = String::new();
+    let digits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+
+    for _ in 0..8 {
+        let d: i32 = rng.gen_range(0, 16);
+        data.push(digits[d as usize]);
+    }
+
+    data
 }
 
 
