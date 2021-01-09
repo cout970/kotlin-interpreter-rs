@@ -3,6 +3,8 @@
 // cargo watch -c -q -x test
 // cargo watch -c -q -s 'cargo rustc -- -Awarnings -Zno-codegen && cargo test'
 #![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 // Note: https://stackoverflow.com/questions/32895522/disable-copying-entire-line-when-nothing-is-selected-in-intellij
 // }
 
@@ -16,6 +18,8 @@ use crate::source_code::SourceCode;
 use rand::Rng;
 
 pub mod source_code;
+pub mod source;
+pub mod source_cursor;
 pub mod tokenizer;
 pub mod parser;
 pub mod analyzer;

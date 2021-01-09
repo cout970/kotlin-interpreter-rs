@@ -6,7 +6,7 @@ pub type SourceCode = Arc<Vec<u8>>;
 
 pub type Span = (u32, u32);
 
-// Padding at the end of the source code to avoid check for the end of content
+// Padding at the end of the source code to avoid checks for the end of content
 pub const SOURCE_CODE_PADDING: usize = 4;
 
 pub fn from_str(code: &str) -> SourceCode {

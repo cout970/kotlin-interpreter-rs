@@ -229,7 +229,7 @@ impl Display for AstLocalProperty {
             write!(f, "val")?;
         }
 
-        write!(f, " {:?} ", self.var);
+        write!(f, " {:?} ", self.var)?;
 
         if let Some(it) = &self.expr {
             if self.delegated {
@@ -321,7 +321,7 @@ impl Display for AstExpr {
                 write!(f, "break")?;
             }
             AstExpr::Try { body, catch, finally, .. } => {
-                write!(f, "try {:?} ", body);
+                write!(f, "try {:?} ", body)?;
                 for (var, expr) in catch {
                     write!(f, "catch ({:?}) {:?} ", var, expr)?;
                 }

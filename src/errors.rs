@@ -143,7 +143,7 @@ impl Debug for KtError {
     }
 }
 
-fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &TokenizerError) -> Result<(), Error> {
+fn print_tokenizer_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &TokenizerError) -> Result<(), Error> {
     match error {
         TokenizerError::UnknownCharacter(c) => {
             write!(f, "Found unknown character: '{}' ({})\n", *c as char, *c)?;
@@ -172,7 +172,7 @@ fn print_tokenizer_error(f: &mut Write, code: &SourceCode, span: Span, error: &T
     Ok(())
 }
 
-fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &AnalyserError) -> Result<(), Error> {
+fn print_analyser_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &AnalyserError) -> Result<(), Error> {
     match error {
         AnalyserError::InvalidModifierUsage { modifier, context } => {
             write!(f, "Modifier '{:?}' is not applicable in {}\n", modifier, context)?;
@@ -198,7 +198,7 @@ fn print_analyser_error(f: &mut Write, code: &SourceCode, span: Span, error: &An
     Ok(())
 }
 
-fn print_interpreter_error(f: &mut Write, code: &SourceCode, span: Span, error: &InterpreterError) -> Result<(), Error> {
+fn print_interpreter_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &InterpreterError) -> Result<(), Error> {
     match error {
         _ => {}
     }
@@ -207,7 +207,7 @@ fn print_interpreter_error(f: &mut Write, code: &SourceCode, span: Span, error: 
     Ok(())
 }
 
-fn print_parser_error(f: &mut Write, code: &SourceCode, span: Span, error: &ParserError) -> Result<(), Error> {
+fn print_parser_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &ParserError) -> Result<(), Error> {
     match error {
         ParserError::UnexpectedToken { found } => {
             write!(f, "Found unexpected token: {}\n", found)?;
