@@ -4,34 +4,12 @@ use std::fmt::Error;
 use std::fmt::Formatter;
 use std::fmt::Write;
 
-use crate::Number;
+use crate::parser::{ParserError, ParserErrorKind};
 use crate::parser::parse_tree::Modifier;
 use crate::parser::parse_tree::ModifierCtx;
-use crate::source_code::print_code_location;
-use crate::source_code::SourceCode;
-use crate::source_code::Span;
-use crate::source_code::to_str;
-use crate::tokenizer::token::Token;
-
-#[derive(Debug, Clone)]
-pub enum TokenizerError {
-    UnknownCharacter(u8),
-    UnsupportedLiteralPrefix(char),
-    ExpectedEndOfString,
-    ExpectedEndOfChar,
-    UnclosedComment,
-    InvalidEscapeChar(char),
-    ExpectedEndOfEscapedIdentifier,
-}
-
-#[derive(Debug, Clone)]
-pub enum ParserError {
-    UnexpectedToken { found: Token },
-    ExpectedToken { expected: Token, found: Token },
-    ExpectedTokenId { found: Token },
-    FoundInvalidModifier { found: Modifier, ctx: ModifierCtx },
-    ExpectedTokenOf { found: Token, options: Vec<Token> },
-}
+use crate::source::{ByteSpan, Source};
+use crate::token::{Number, Token};
+use crate::token_stream::{TokenStreamError, TokenStreamErrorKind};
 
 #[derive(Debug, Clone)]
 pub enum AnalyserError {
@@ -70,15 +48,10 @@ pub enum AnalyserError {
     ExpectedVariable,
 }
 
-#[derive(Debug, Clone)]
-pub enum InterpreterError {}
-
 #[derive(Clone)]
 pub enum KtError {
-    Tokenizer { code: SourceCode, span: Span, info: TokenizerError },
-    Parser { code: SourceCode, span: Span, info: ParserError },
-    Analyser { code: SourceCode, span: Span, info: AnalyserError },
-    Interpreter { code: SourceCode, span: Span, info: InterpreterError },
+    Parser(ParserError),
+    Analyser { code: Source, span: ByteSpan, info: AnalyserError },
     Unimplemented,
 }
 
@@ -88,24 +61,11 @@ impl Display for KtError {
             KtError::Unimplemented => {
                 write!(f, "\n\nUnimplemented\n")?;
             }
-            KtError::Tokenizer { code, span, info } => {
+            KtError::Parser(info) => {
                 // Use color red
                 write!(f, "\x1B[31m")?;
 
-                write!(f, "\n\nAn error occurred: \n")?;
-                print_tokenizer_error(f, code, *span, info)?;
-                write!(f, "\n\n")?;
-
-                // Reset color
-                write!(f, "\x1B[0m")?;
-            }
-            KtError::Parser { code, span, info } => {
-                // Use color red
-                write!(f, "\x1B[31m")?;
-
-                write!(f, "\n\nAn error occurred: \n")?;
-                print_parser_error(f, code, *span, info)?;
-                write!(f, "\n\n")?;
+                write!(f, "\n\nAn error occurred: \n{}\n\n", info)?;
 
                 // Reset color
                 write!(f, "\x1B[0m")?;
@@ -116,17 +76,6 @@ impl Display for KtError {
 
                 write!(f, "\n\nAn error occurred: \n")?;
                 print_analyser_error(f, code, *span, info)?;
-                write!(f, "\n\n")?;
-
-                // Reset color
-                write!(f, "\x1B[0m")?;
-            }
-            KtError::Interpreter { code, span, info } => {
-                // Use color red
-                write!(f, "\x1B[31m")?;
-
-                write!(f, "\n\nAn error occurred: \n")?;
-                print_interpreter_error(f, code, *span, info)?;
                 write!(f, "\n\n")?;
 
                 // Reset color
@@ -143,36 +92,38 @@ impl Debug for KtError {
     }
 }
 
-fn print_tokenizer_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &TokenizerError) -> Result<(), Error> {
-    match error {
-        TokenizerError::UnknownCharacter(c) => {
-            write!(f, "Found unknown character: '{}' ({})\n", *c as char, *c)?;
+impl Display for TokenStreamError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            TokenStreamErrorKind::UnknownCharacter(c) => {
+                write!(f, "Found unknown character: '{}' ({})\n", *c as char, *c)?;
+            }
+            TokenStreamErrorKind::UnsupportedLiteralPrefix(c) => {
+                write!(f, "Unsupported number prefix: 0{}\n", *c)?;
+            }
+            TokenStreamErrorKind::ExpectedEndOfString => {
+                write!(f, "Found end of the line while reading a string\n")?;
+            }
+            TokenStreamErrorKind::ExpectedEndOfChar => {
+                write!(f, "Found expecting end of character literal\n")?;
+            }
+            TokenStreamErrorKind::UnclosedComment => {
+                write!(f, "Found unclosed comment\n")?;
+            }
+            TokenStreamErrorKind::InvalidEscapeChar(c) => {
+                write!(f, "Found invalid escape character: '{}' ({})\n", *c, *c as u32)?;
+            }
+            TokenStreamErrorKind::ExpectedEndOfEscapedIdentifier => {
+                write!(f, "I was expecting a ` to end the escaped identifier: \n")?;
+            }
         }
-        TokenizerError::UnsupportedLiteralPrefix(c) => {
-            write!(f, "Unsupported number prefix: 0{}\n", *c)?;
-        }
-        TokenizerError::ExpectedEndOfString => {
-            write!(f, "Found end of the line while reading a string\n")?;
-        }
-        TokenizerError::ExpectedEndOfChar => {
-            write!(f, "Found expecting end of character literal\n")?;
-        }
-        TokenizerError::UnclosedComment => {
-            write!(f, "Found unclosed comment\n")?;
-        }
-        TokenizerError::InvalidEscapeChar(c) => {
-            write!(f, "Found invalid escape character: '{}' ({})\n", *c, *c as u32)?;
-        }
-        TokenizerError::ExpectedEndOfEscapedIdentifier => {
-            write!(f, "I was expecting a ` to end the escaped identifier: \n")?;
-        }
-    }
 
-    write!(f, "{}", print_code_location(&to_str(code), span))?;
-    Ok(())
+        write!(f, "{}", self.span)?;
+        Ok(())
+    }
 }
 
-fn print_analyser_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &AnalyserError) -> Result<(), Error> {
+fn print_analyser_error(f: &mut dyn Write, code: &Source, span: ByteSpan, error: &AnalyserError) -> Result<(), Error> {
     match error {
         AnalyserError::InvalidModifierUsage { modifier, context } => {
             write!(f, "Modifier '{:?}' is not applicable in {}\n", modifier, context)?;
@@ -194,55 +145,53 @@ fn print_analyser_error(f: &mut dyn Write, code: &SourceCode, span: Span, error:
         }
     }
 
-    write!(f, "{}", print_code_location(&to_str(code), span))?;
+    // TODO
+    // write!(f, "{}", print_code_location(&to_str(code), span))?;
     Ok(())
 }
 
-fn print_interpreter_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &InterpreterError) -> Result<(), Error> {
-    match error {
-        _ => {}
-    }
 
-    write!(f, "{}", print_code_location(&to_str(code), span))?;
-    Ok(())
-}
-
-fn print_parser_error(f: &mut dyn Write, code: &SourceCode, span: Span, error: &ParserError) -> Result<(), Error> {
-    match error {
-        ParserError::UnexpectedToken { found } => {
-            write!(f, "Found unexpected token: {}\n", found)?;
-        }
-        ParserError::ExpectedToken { expected, found } => {
-            write!(f, "Expecting: {} but found: {}\n", expected, found)?;
-        }
-        ParserError::ExpectedTokenId { found } => {
-            write!(f, "Expecting identifier but found: {}\n", found)?;
-        }
-        ParserError::ExpectedTokenOf { found, options } => {
-            write!(f, "Found token {} but I was expecting one of:\n", found)?;
-            for x in options {
-                write!(f, " - {}\n", x)?;
+impl Display for ParserError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            ParserErrorKind::UnexpectedToken { found } => {
+                write!(f, "Found unexpected token: {}\n", found)?;
             }
+            ParserErrorKind::ExpectedToken { expected, found } => {
+                write!(f, "Expecting: {} but found: {}\n", expected, found)?;
+            }
+            ParserErrorKind::ExpectedTokenId { found } => {
+                write!(f, "Expecting identifier but found: {}\n", found)?;
+            }
+            ParserErrorKind::ExpectedTokenOf { found, options } => {
+                write!(f, "Found token {} but I was expecting one of:\n", found)?;
+                for x in options {
+                    write!(f, " - {}\n", x)?;
+                }
+            }
+            ParserErrorKind::TokenStreamError { kind } => {
+                return write!(f, "{}", TokenStreamError { kind: kind.clone(), span: self.span.clone() });
+            }
+            // ParserErrorKind::FoundInvalidModifier { found, ctx } => {
+            //     let ctx_name = match ctx {
+            //         ModifierCtx::TopLevelObject => "top level",
+            //         ModifierCtx::TypeParameter => "type parameter",
+            //         ModifierCtx::Statement => "statement",
+            //         ModifierCtx::Package => "package",
+            //         ModifierCtx::Constructor => "constructor",
+            //         ModifierCtx::GetterSetter => "getter/setter",
+            //         ModifierCtx::ClassMember => "class member",
+            //         ModifierCtx::EnumEntry => "enum entry",
+            //         ModifierCtx::FunctionParameter => "parameter",
+            //         ModifierCtx::ConstructorParameter => "constructor parameter",
+            //     };
+            //     write!(f, "Modifier '{:?}' is not applicable to '{}'\n", found, ctx_name)?;
+            // }
         }
-        ParserError::FoundInvalidModifier { found, ctx } => {
-            let ctx_name = match ctx {
-                ModifierCtx::TopLevelObject => "top level",
-                ModifierCtx::TypeParameter => "type parameter",
-                ModifierCtx::Statement => "statement",
-                ModifierCtx::Package => "package",
-                ModifierCtx::Constructor => "constructor",
-                ModifierCtx::GetterSetter => "getter/setter",
-                ModifierCtx::ClassMember => "class member",
-                ModifierCtx::EnumEntry => "enum entry",
-                ModifierCtx::FunctionParameter => "parameter",
-                ModifierCtx::ConstructorParameter => "constructor parameter",
-            };
-            write!(f, "Modifier '{:?}' is not applicable to '{}'\n", found, ctx_name)?;
-        }
-    }
 
-    write!(f, "{}", print_code_location(&to_str(code), span))?;
-    Ok(())
+        write!(f, "{}", self.span)?;
+        Ok(())
+    }
 }
 
 impl Display for Token {
@@ -337,7 +286,6 @@ impl Display for Token {
         Ok(())
     }
 }
-
 
 impl Display for Number {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {

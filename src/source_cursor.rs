@@ -1,6 +1,6 @@
 use std::intrinsics::transmute;
 
-use crate::source::{BytePos, ByteSpan, Source};
+use crate::source::{BytePos, ByteSpan, Source, SourceSpan};
 
 pub struct SourceCursor {
     source: Source,
@@ -13,6 +13,10 @@ impl SourceCursor {
             source,
             pos: 0,
         }
+    }
+
+    pub fn source(&self) -> Source {
+        self.source.clone()
     }
 
     pub fn consume_u8(&mut self) -> u8 {
@@ -33,16 +37,15 @@ impl SourceCursor {
     }
 
     #[inline]
-    pub fn next_u8(&self, offset: u32) -> u8 {
+    pub fn offset_u8(&self, offset: u32) -> u8 {
         self.source.content[(self.pos + offset) as usize]
     }
 
     pub fn char(&self) -> char {
-        if let Ok(string) = std::str::from_utf8(&self.source.content[(self.pos as usize)..1]) {
-            if !string.is_empty() {
-                return string.chars().next().unwrap();
-            }
+        if self.u8().is_ascii() {
+            return self.u8() as char;
         }
+
         if let Ok(string) = std::str::from_utf8(&self.source.content[(self.pos as usize)..2]) {
             if !string.is_empty() {
                 return string.chars().next().unwrap();
@@ -85,6 +88,9 @@ impl SourceCursor {
 
     pub fn span(&self, start: BytePos) -> ByteSpan {
         ByteSpan::new(start.0, self.pos)
+    }
+    pub fn source_span(&self, start: BytePos) -> SourceSpan {
+        self.span(start).to_source_span(self.source.clone())
     }
 }
 

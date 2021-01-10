@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::Number;
-use crate::source_code::Span;
-
-pub const SPAN_NONE: Span = (0, 0);
+use crate::source::ByteSpan;
+use crate::token::Number;
 
 pub type Path = Vec<String>;
 
@@ -27,7 +25,7 @@ pub struct Preamble {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FileAnnotation {
-    pub span: Span,
+    pub span: ByteSpan,
     pub annotations: Vec<Annotation>,
 //    type_arguments: Vec<Type>,
 //    value_arguments: Option<>,
@@ -35,7 +33,7 @@ pub struct FileAnnotation {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Annotation {
-    pub span: Span,
+    pub span: ByteSpan,
     pub names: Path,
     pub use_site_target: Option<String>,
     pub type_arguments: Vec<CallSiteTypeParams>,
@@ -44,14 +42,14 @@ pub struct Annotation {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Import {
-    pub span: Span,
+    pub span: ByteSpan,
     pub path: Vec<String>,
     pub alias: Option<String>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PackageHeader {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub path: Vec<String>,
 }
@@ -112,7 +110,6 @@ pub enum Modifier {
     Override,
 }
 
-
 #[derive(Clone, PartialEq, Debug)]
 pub enum TopLevelObject {
     Class(Class),
@@ -124,7 +121,7 @@ pub enum TopLevelObject {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Property {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub mutable: bool,
     pub type_parameters: Vec<TypeParameter>,
@@ -145,7 +142,7 @@ pub enum PropertyInitialization {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PropertyGetter {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub ty: Option<Type>,
     pub body: Option<FunctionBody>,
@@ -153,7 +150,7 @@ pub struct PropertyGetter {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PropertySetter {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub param_modifiers: Vec<Modifier>,
     pub param_name: Option<String>,
@@ -161,9 +158,9 @@ pub struct PropertySetter {
     pub body: Option<FunctionBody>,
 }
 
-pub type ExprVal = (Span, Expr);
-pub type ExprRef = Arc<(Span, Expr)>;
-pub type Block = (Span, Vec<Statement>);
+pub type ExprVal = (ByteSpan, Expr);
+pub type ExprRef = Arc<(ByteSpan, Expr)>;
+pub type Block = (ByteSpan, Vec<Statement>);
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
@@ -272,7 +269,7 @@ pub struct VariableDeclarationEntry {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Function {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
@@ -296,19 +293,19 @@ pub enum Statement {
     Assignment(ExprVal, String, ExprVal),
     Declaration(Declaration),
     For {
-        span: Span,
+        span: ByteSpan,
         annotations: Vec<Annotation>,
         variables: Vec<VariableDeclarationEntry>,
         expr: ExprRef,
         body: Block,
     },
     While {
-        span: Span,
+        span: ByteSpan,
         expr: ExprRef,
         body: Block,
     },
     DoWhile {
-        span: Span,
+        span: ByteSpan,
         expr: ExprRef,
         body: Block,
     },
@@ -325,7 +322,7 @@ pub enum Declaration {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct TypeAlias {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
@@ -334,7 +331,7 @@ pub struct TypeAlias {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Object {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub name: String,
     pub primary_constructor: Option<PrimaryConstructor>,
@@ -381,7 +378,7 @@ pub struct TypeParameter {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Type {
-    pub span: Span,
+    pub span: ByteSpan,
     pub annotations: Vec<Annotation>,
     pub reference: Arc<TypeReference>,
 }
@@ -427,7 +424,7 @@ pub enum ClassType {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Class {
-    pub span: Span,
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub class_type: ClassType,
     pub name: String,
@@ -467,7 +464,7 @@ pub enum Member {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct AnonymousInitializer {
-    pub span: Span,
+    pub span: ByteSpan,
     pub body: Block,
 }
 
@@ -501,7 +498,7 @@ pub enum DelegationSpecifier {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CallSuffix {
-    pub span: Span,
+    pub span: ByteSpan,
     pub type_arguments: Vec<CallSiteTypeParams>,
     pub value_arguments: Vec<ValueArgument>,
     pub annotated_lambda: Option<AnnotatedLambda>,

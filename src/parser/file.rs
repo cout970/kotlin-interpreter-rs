@@ -50,13 +50,13 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
         let saved = s.save();
         read_modifiers(s, ModifierCtx::TopLevelObject).unwrap();
 
-        if s.read_token(0) == Token::Fun ||
-            s.read_token(0) == Token::Val ||
-            s.read_token(0) == Token::Var ||
-            s.read_token(0) == Token::Class ||
-            s.read_token(0) == Token::Interface ||
-            s.read_token(0) == Token::Object ||
-            s.read_token(0) == Token::TypeAlias
+        if s.token(0) == Token::Fun ||
+            s.token(0) == Token::Val ||
+            s.token(0) == Token::Var ||
+            s.token(0) == Token::Class ||
+            s.token(0) == Token::Interface ||
+            s.token(0) == Token::Object ||
+            s.token(0) == Token::TypeAlias
         {
             s.restore(saved);
             objects.push(read_top_level_object(s)?);
@@ -71,7 +71,7 @@ pub fn read_file(s: &mut TokenCursor) -> Result<KotlinFile, KtError> {
 fn read_top_level_object(s: &mut TokenCursor) -> Result<TopLevelObject, KtError> {
     let modifiers = read_modifiers(s, ModifierCtx::TopLevelObject)?;
 
-    let obj = match s.read_token(0) {
+    let obj = match s.token(0) {
         Token::Fun => {
             TopLevelObject::Function(read_function(s, modifiers)?)
         }
@@ -126,7 +126,7 @@ fn read_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Proper
         None => None
     };
 
-    let declarations = if let Token::LeftParen = s.read_token(0) {
+    let declarations = if let Token::LeftParen = s.token(0) {
         read_multiple_variable_declarations(s)?
     } else {
         vec![read_variable_declaration(s)?]
@@ -176,7 +176,7 @@ fn read_local_property(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<
 
     let type_parameters = read_type_parameters(s)?;
 
-    let declarations = if let Token::LeftParen = s.read_token(0) {
+    let declarations = if let Token::LeftParen = s.token(0) {
         read_multiple_variable_declarations(s)?
     } else {
         vec![read_variable_declaration(s)?]
@@ -213,12 +213,12 @@ fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Op
     let mut getter: Option<PropertyGetter> = None;
     let mut setter: Option<PropertySetter> = None;
 
-    match s.read_token(0) {
+    match s.token(0) {
         Token::Id(ref t) if t == "get" => {
             getter = Some(read_property_getter(s, modifiers)?);
             let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
 
-            match s.read_token(0) {
+            match s.token(0) {
                 Token::Id(ref t) if t == "set" => {
                     setter = Some(read_property_setter(s, modifiers)?);
                 }
@@ -229,7 +229,7 @@ fn read_getter_setter(s: &mut TokenCursor) -> Result<(Option<PropertyGetter>, Op
             setter = Some(read_property_setter(s, modifiers)?);
             let modifiers = read_modifiers(s, ModifierCtx::GetterSetter)?;
 
-            match s.read_token(0) {
+            match s.token(0) {
                 Token::Id(ref t) if t == "get" => {
                     getter = Some(read_property_getter(s, modifiers)?);
                 }
@@ -286,7 +286,7 @@ fn read_property_setter(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result
 }
 
 fn read_variable_decl(s: &mut TokenCursor) -> Result<Vec<VariableDeclarationEntry>, KtError> {
-    if let Token::LeftParen = s.read_token(0) {
+    if let Token::LeftParen = s.token(0) {
         read_multiple_variable_declarations(s)
     } else {
         Ok(vec![read_variable_declaration(s)?])
@@ -405,7 +405,7 @@ fn read_name_infix(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         return Ok(expr);
     }
 
-    match s.read_token(0) {
+    match s.token(0) {
         Token::Is | Token::NotIs => {
             s.next();
             let ty = read_type(s)?;
@@ -514,8 +514,8 @@ fn read_expr_prefix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 }
 
 fn is_at_expr_postfix_firsts(s: &mut TokenCursor) -> bool {
-    let this = s.read_token(0);
-    let next = if this != Token::EOF { s.read_token(1) } else { Token::EOF };
+    let this = s.token(0);
+    let next = if this != Token::EOF { s.token(1) } else { Token::EOF };
 
     // Token::LeftAngleBracket cannot be included because is used for 'less than' comparison
     match this {
@@ -536,8 +536,8 @@ fn read_expr_postfix_operation(s: &mut TokenCursor) -> Result<ExprPostfix, KtErr
 //    : memberAccessOperation postfixUnaryExpression
 //  ;
 
-    let this = s.read_token(0);
-    let next = if this != Token::EOF { s.read_token(1) } else { Token::EOF };
+    let this = s.token(0);
+    let next = if this != Token::EOF { s.token(1) } else { Token::EOF };
     let suf = match this {
         Token::DoublePlus => {
             s.next();
@@ -602,7 +602,7 @@ fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let mut ops = vec![];
     loop {
         // Ambiguity with '<'
-        if s.read_token(0) == Token::LeftAngleBracket {
+        if s.token(0) == Token::LeftAngleBracket {
             if let Some(it) = s.optional(&read_expr_postfix_operation) {
                 ops.push(it);
             } else {
@@ -623,7 +623,7 @@ fn read_expr_postfix_unary(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
 
-    let ty = match s.read_token(0) {
+    let ty = match s.token(0) {
         Token::This => {
             s.next();
             // Ignore 'this' label
@@ -646,7 +646,7 @@ fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         s.expect_id()?
     };
 
-    let type_arguments = if s.read_token(0) == Token::LeftAngleBracket {
+    let type_arguments = if s.token(0) == Token::LeftAngleBracket {
         read_type_arguments(s)?
     } else {
         vec![]
@@ -657,7 +657,7 @@ fn read_expr_callable_ref(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 
 fn read_expr_atomic(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let start = s.start();
-    match s.read_token(0) {
+    match s.token(0) {
         Token::LeftParen => {
             s.next();
             let e = read_expresion(s)?;
@@ -751,7 +751,7 @@ fn read_expr_string(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let mut components = vec![];
 
     loop {
-        match s.read_token(0) {
+        match s.token(0) {
             Token::StringContent(it) => {
                 s.next();
                 components.push(StringComponent::Content(it));
@@ -798,7 +798,7 @@ fn read_expr_if(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 
     let mut if_false = None;
 
-    if s.read_token(0) == Token::Else && s.read_token(1) != Token::LeftArrow {
+    if s.token(0) == Token::Else && s.token(1) != Token::LeftArrow {
         s.next();
         if_false = Some(read_control_structure_body(s)?);
     }
@@ -883,7 +883,7 @@ fn read_expr_when(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     s.expect(Token::LeftBrace)?;
     let mut entries = vec![];
 
-    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+    while s.token(0) != Token::RightBrace && s.token(0) != Token::EOF {
         entries.push(read_expr_when_entry(s)?);
     }
 
@@ -896,7 +896,7 @@ fn read_expr_when(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 }
 
 fn read_expr_when_entry(s: &mut TokenCursor) -> Result<WhenEntry, KtError> {
-    let conditions = if s.read_token(0) == Token::Else {
+    let conditions = if s.token(0) == Token::Else {
         s.next();
         vec![WhenCondition::Else]
     } else {
@@ -910,7 +910,7 @@ fn read_expr_when_entry(s: &mut TokenCursor) -> Result<WhenEntry, KtError> {
 }
 
 fn read_expr_when_condition(s: &mut TokenCursor) -> Result<WhenCondition, KtError> {
-    match s.read_token(0) {
+    match s.token(0) {
         Token::In => {
             s.next();
             Ok(WhenCondition::In { negated: false, expr: read_expresion(s)? })
@@ -952,14 +952,14 @@ fn read_object_literal(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
 }
 
 fn read_control_structure_body(s: &mut TokenCursor) -> Result<Block, KtError> {
-    if s.read_token(0) == Token::LeftBrace && s.at_newline() {
+    if s.token(0) == Token::LeftBrace && s.at_newline() {
         let start = s.start();
         if let Some(expr) = s.optional(&read_expresion) {
             return Ok(((start, s.end()), vec![Statement::Expression(expr)]));
         }
     }
 
-    if s.read_token(0) == Token::LeftBrace {
+    if s.token(0) == Token::LeftBrace {
         Ok(read_block(s)?)
     } else {
         // TODO support expression annotations?
@@ -976,7 +976,7 @@ fn read_expr_try(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
     let mut catch_blocks = vec![];
 
     loop {
-        match s.read_token(0) {
+        match s.token(0) {
             Token::Id(ref it) if it == "catch" => {
                 s.next();
                 s.expect(Token::LeftParen)?;
@@ -1000,7 +1000,7 @@ fn read_expr_try(s: &mut TokenCursor) -> Result<ExprVal, KtError> {
         }
     }
 
-    let finally = match s.read_token(0) {
+    let finally = match s.token(0) {
         Token::Id(ref it) if it == "finally" => {
             s.next();
             Some(read_block(s)?)
@@ -1054,7 +1054,7 @@ fn read_function(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Functi
     };
 
     let type_constraints = read_type_constraints(s)?;
-    let body = if s.read_token(0) == Token::LeftBrace || s.read_token(0) == Token::Equals {
+    let body = if s.token(0) == Token::LeftBrace || s.token(0) == Token::Equals {
         Some(read_function_body(s)?)
     } else {
         None
@@ -1105,7 +1105,7 @@ fn read_type(s: &mut TokenCursor) -> Result<Type, KtError> {
     let start = s.start();
 
     // Ignore suspend modifier for now
-    if let Token::Id(name) = s.read_token(0) {
+    if let Token::Id(name) = s.token(0) {
         if name == "suspend" {
             s.next();
         }
@@ -1142,7 +1142,7 @@ fn read_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError> {
     // "@" (annotationUseSiteTarget ":")? unescapedAnnotation
     s.expect(Token::At)?;
 
-    let use_site_target = if s.read_token(1) == Token::Colon {
+    let use_site_target = if s.token(1) == Token::Colon {
         let id = s.expect_id()?;
         s.expect(Token::Colon)?;
         Some(id)
@@ -1159,7 +1159,7 @@ fn read_annotation_list(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError>
     // "@" (annotationUseSiteTarget ":")? "[" unescapedAnnotation+ "]"
     s.expect(Token::At)?;
 
-    let use_site_target = if s.read_token(1) == Token::Colon {
+    let use_site_target = if s.token(1) == Token::Colon {
         let id = s.expect_id()?;
         s.expect(Token::Colon)?;
         Some(id)
@@ -1179,7 +1179,7 @@ fn read_annotation_list(s: &mut TokenCursor) -> Result<Vec<Annotation>, KtError>
 }
 
 fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeReference>, KtError> {
-    let ty = match s.read_token(0) {
+    let ty = match s.token(0) {
         // Options
         //  (Int)           => Int
         //  (Int) -> Int    => func Int to Int
@@ -1227,8 +1227,8 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
 
                 // Function type with receiver a.k.a.
                 // Int.(Int)->Int
-                if s.read_token(0) == Token::Dot && s.read_token(1) == Token::LeftParen {
-                    let span = s.read_token_span(0);
+                if s.token(0) == Token::Dot && s.token(1) == Token::LeftParen {
+                    let span = s.span(0);
                     s.next();
                     let func_ref = read_type_reference(s, false)?;
 
@@ -1249,14 +1249,14 @@ fn read_type_reference(s: &mut TokenCursor, receiver: bool) -> Result<Arc<TypeRe
                 sum.push(read_simple_user_type(s)?);
 
                 loop {
-                    if s.read_token(0) != Token::Dot {
+                    if s.token(0) != Token::Dot {
                         break;
                     }
 
                     // If we are in  the case `val java.lang.Integer.neg: Int get() = -this`
                     // we need to stop before the name 'neg'
-                    if let Token::Id(_) = s.read_token(1) {
-                        if s.read_token(2) != Token::Dot {
+                    if let Token::Id(_) = s.token(1) {
+                        if s.token(2) != Token::Dot {
                             break;
                         }
                     }
@@ -1376,7 +1376,7 @@ fn read_statements(s: &mut TokenCursor) -> Result<Vec<Statement>, KtError> {
     let mut statements = vec![];
     s.many0(&expect_token(Token::Semicolon))?;
 
-    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+    while s.token(0) != Token::RightBrace && s.token(0) != Token::EOF {
         statements.push(read_statement(s)?);
         s.many0(&expect_token(Token::Semicolon))?;
     }
@@ -1398,7 +1398,7 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
     // declaration
     let modifiers = read_modifiers(s, ModifierCtx::Statement)?;
 
-    if s.read_token(0) == Token::Object {
+    if s.token(0) == Token::Object {
         // Special case for object, it could be an object declaration or an object literal,
         // since object literal is more restrictive (doesnt have a name) it fails faster,
         // also if the first option checked fails the error is ignored, so better ignore the error
@@ -1413,18 +1413,18 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
             }
         }
     } else {
-        if s.read_token(0) == Token::Fun ||
-            s.read_token(0) == Token::Val ||
-            s.read_token(0) == Token::Var ||
-            s.read_token(0) == Token::Class ||
-            s.read_token(0) == Token::Interface ||
-            s.read_token(0) == Token::TypeAlias {
+        if s.token(0) == Token::Fun ||
+            s.token(0) == Token::Val ||
+            s.token(0) == Token::Var ||
+            s.token(0) == Token::Class ||
+            s.token(0) == Token::Interface ||
+            s.token(0) == Token::TypeAlias {
             Ok(Statement::Declaration(read_declaration(s, modifiers)?))
-        } else if s.read_token(0) == Token::For {
+        } else if s.token(0) == Token::For {
             Ok(read_statement_for(s)?)
-        } else if s.read_token(0) == Token::Do {
+        } else if s.token(0) == Token::Do {
             Ok(read_statement_do_while(s)?)
-        } else if s.read_token(0) == Token::While {
+        } else if s.token(0) == Token::While {
             Ok(read_statement_while(s)?)
         } else {
             let stm = read_statement_expr(s)?;
@@ -1435,7 +1435,7 @@ fn read_statement(s: &mut TokenCursor) -> Result<Statement, KtError> {
 }
 
 fn read_declaration(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Declaration, KtError> {
-    let res = match s.read_token(0) {
+    let res = match s.token(0) {
         Token::Fun => Declaration::Function(read_function(s, modifiers)?),
         Token::Val | Token::Var => Declaration::Property(read_local_property(s, modifiers)?),
         Token::Class | Token::Interface => Declaration::Class(read_class(s, modifiers)?),
@@ -1485,7 +1485,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
 
     let name = s.expect_id()?;
     let type_parameters = read_type_parameters(s)?;
-    let primary_constructor = if s.read_token(0) == Token::LeftParen {
+    let primary_constructor = if s.token(0) == Token::LeftParen {
         Some(read_primary_constructor(s)?)
     } else {
         s.optional(&read_primary_constructor)
@@ -1504,7 +1504,7 @@ fn read_class(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Class, Kt
     let body = if class_type == ClassType::Enum {
         Some(read_enum_body(s)?)
     } else {
-        if s.read_token(0) == Token::LeftBrace {
+        if s.token(0) == Token::LeftBrace {
             Some(read_class_body(s)?)
         } else {
             None
@@ -1555,7 +1555,7 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
         DelegationCall::None
     };
 
-    let body = if s.read_token(0) == Token::LeftBrace || s.read_token(0) == Token::Equals {
+    let body = if s.token(0) == Token::LeftBrace || s.token(0) == Token::Equals {
         Some(read_block(s)?)
     } else {
         None
@@ -1570,7 +1570,7 @@ fn read_secondary_constructor(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> 
 }
 
 fn read_delegation_call(s: &mut TokenCursor) -> Result<DelegationCall, KtError> {
-    let del = match s.read_token(0) {
+    let del = match s.token(0) {
         Token::This => {
             s.next();
             DelegationCall::This(read_value_arguments(s)?)
@@ -1629,20 +1629,20 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
     // 1(2,3,4)
     let start = s.start();
 
-    let type_arguments = match s.read_token(0) {
+    let type_arguments = match s.token(0) {
         Token::LeftAngleBracket => read_type_arguments(s)?,
         _ => vec![]
     };
 
-    let value_arguments = match s.read_token(0) {
+    let value_arguments = match s.token(0) {
         Token::LeftParen => read_value_arguments(s)?,
         _ => vec![]
     };
 
-    let annotated_lambda = match s.read_token(0) {
+    let annotated_lambda = match s.token(0) {
         Token::LeftBrace => Some(read_annotated_lambda(s)?),
         Token::Id(_) => {
-            if s.read_token(1) == Token::At {
+            if s.token(1) == Token::At {
                 Some(read_annotated_lambda(s)?)
             } else {
                 None
@@ -1662,12 +1662,12 @@ fn read_call_suffix(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
 fn read_call_suffix_without_lambda(s: &mut TokenCursor) -> Result<CallSuffix, KtError> {
     let start = s.start();
 
-    let type_arguments = match s.read_token(0) {
+    let type_arguments = match s.token(0) {
         Token::LeftAngleBracket => read_type_arguments(s)?,
         _ => vec![]
     };
 
-    let value_arguments = match s.read_token(0) {
+    let value_arguments = match s.token(0) {
         Token::LeftParen => read_value_arguments(s)?,
         _ => vec![]
     };
@@ -1686,7 +1686,7 @@ fn read_annotated_lambda(s: &mut TokenCursor) -> Result<AnnotatedLambda, KtError
         annotations.push(read_unescaped_annotation(s)?);
     }
 
-    if iff!(let Token::Id(_) = s.read_token(0)) && s.read_token(1) == Token::At {
+    if iff!(let Token::Id(_) = s.token(0)) && s.token(1) == Token::At {
         s.expect_id()?;
         s.expect(Token::At)?;
     }
@@ -1731,7 +1731,7 @@ fn read_value_arguments(s: &mut TokenCursor) -> Result<Vec<ValueArgument>, KtErr
 fn read_value_argument(s: &mut TokenCursor) -> Result<ValueArgument, KtError> {
     let mut name = None;
 
-    if iff!(let Token::Id(_) = s.read_token(0)) && s.read_token(1) == Token::Equals {
+    if iff!(let Token::Id(_) = s.token(0)) && s.token(1) == Token::Equals {
         name = Some(s.expect_id()?);
         s.expect(Token::Equals)?;
     }
@@ -1752,7 +1752,7 @@ fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
     let mut members = vec![];
     s.many0(&expect_token(Token::Semicolon))?;
 
-    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+    while s.token(0) != Token::RightBrace && s.token(0) != Token::EOF {
         members.push(read_member(s)?);
         s.many0(&expect_token(Token::Semicolon))?;
     }
@@ -1765,7 +1765,7 @@ fn read_class_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
 fn read_member(s: &mut TokenCursor) -> Result<Member, KtError> {
     let modifiers = read_modifiers(s, ModifierCtx::ClassMember)?;
 
-    let obj = match s.read_token(0) {
+    let obj = match s.token(0) {
         Token::Fun => {
             Member::Function(read_function(s, modifiers)?)
         }
@@ -1811,7 +1811,7 @@ fn read_enum_body(s: &mut TokenCursor) -> Result<ClassBody, KtError> {
     let mut members = vec![];
     s.many0(&expect_token(Token::Semicolon))?;
 
-    while s.read_token(0) != Token::RightBrace && s.read_token(0) != Token::EOF {
+    while s.token(0) != Token::RightBrace && s.token(0) != Token::EOF {
         members.push(read_member(s)?);
         s.many0(&expect_token(Token::Semicolon))?;
     }
@@ -1826,12 +1826,12 @@ fn read_enum_entry(s: &mut TokenCursor) -> Result<EnumEntry, KtError> {
     let name = s.expect_id()?;
 
     let mut value_arguments = vec![];
-    if s.read_token(0) == Token::LeftParen {
+    if s.token(0) == Token::LeftParen {
         value_arguments = read_value_arguments(s)?;
     }
 
     let mut class_body = None;
-    if s.read_token(0) == Token::LeftBrace {
+    if s.token(0) == Token::LeftBrace {
         class_body = Some(read_class_body(s)?);
     }
 
@@ -1882,7 +1882,7 @@ fn read_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Result<Object, 
     }
 
 
-    let body = if s.read_token(0) == Token::LeftBrace {
+    let body = if s.token(0) == Token::LeftBrace {
         Some(read_class_body(s)?)
     } else {
         None
@@ -1921,7 +1921,7 @@ fn read_companion_object(s: &mut TokenCursor, modifiers: Vec<Modifier>) -> Resul
         delegations = s.separated_by(Token::Comma, &read_delegation_specifier)?;
     }
 
-    let body = if s.read_token(0) == Token::LeftBrace {
+    let body = if s.token(0) == Token::LeftBrace {
         Some(read_class_body(s)?)
     } else {
         None
@@ -2017,7 +2017,7 @@ fn read_import(s: &mut TokenCursor) -> Result<Import, KtError> {
     let mut path = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
     let mut alias = None;
 
-    match s.read_token(0) {
+    match s.token(0) {
         Token::Dot => {
             s.expect(Token::Dot)?;
             s.expect(Token::Asterisk)?;
@@ -2047,7 +2047,7 @@ fn read_package_header(s: &mut TokenCursor) -> Result<PackageHeader, KtError> {
 fn read_modifiers(s: &mut TokenCursor, set: ModifierCtx) -> Result<Vec<Modifier>, KtError> {
     let mut modifiers = vec![];
     loop {
-        if s.read_token(0) == Token::At {
+        if s.token(0) == Token::At {
             read_annotations(s)?;
         }
         let save = s.save();
@@ -2067,7 +2067,7 @@ fn read_modifiers(s: &mut TokenCursor, set: ModifierCtx) -> Result<Vec<Modifier>
 
 fn read_modifier(s: &mut TokenCursor, set: ModifierCtx) -> Result<Modifier, KtError> {
     let start = s.save();
-    let tk = s.read_token(0);
+    let tk = s.token(0);
 
     let modifier = match tk {
         Token::Id(name) => get_modifier_by_name(&name),
@@ -2078,7 +2078,7 @@ fn read_modifier(s: &mut TokenCursor, set: ModifierCtx) -> Result<Modifier, KtEr
     let modifier = if let Some(it) = modifier {
         it
     } else {
-        let tk = s.read_token(0);
+        let tk = s.token(0);
         s.next();
         let span = (start, s.end());
         return s.make_error(span, ParserError::ExpectedTokenId {
@@ -2176,7 +2176,7 @@ fn read_file_annotation(s: &mut TokenCursor) -> Result<FileAnnotation, KtError> 
     s.expect_keyword("file")?;
     s.expect(Token::Colon)?;
 
-    let annotations = match s.read_token(0) {
+    let annotations = match s.token(0) {
         Token::LeftBracket => {
             s.next();
             let n = s.many1(&read_unescaped_annotation)?;
@@ -2196,13 +2196,13 @@ fn read_unescaped_annotation(s: &mut TokenCursor) -> Result<Annotation, KtError>
     let start = s.start();
     let names = s.separated_by(Token::Dot, &TokenCursor::expect_id)?;
 
-    let type_arguments = if s.read_token(0) == Token::LeftAngleBracket {
+    let type_arguments = if s.token(0) == Token::LeftAngleBracket {
         read_type_arguments(s)?
     } else {
         vec![]
     };
 
-    let value_arguments = if s.read_token(0) == Token::LeftParen {
+    let value_arguments = if s.token(0) == Token::LeftParen {
         read_value_arguments(s)?
     } else {
         vec![]

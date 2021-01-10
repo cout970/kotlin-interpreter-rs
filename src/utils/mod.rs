@@ -1,22 +1,18 @@
 use crate::parser::Parser;
-use crate::source_code::from_str;
-use crate::tokenizer::Tokenizer;
 use crate::analyzer::tree_to_ast::file_to_ast;
 //use crate::analyzer::typechecker::check_types;
 //use crate::analyzer::typechecker::CheckedFile;
-use crate::source_code::SourceCode;
+
 use crate::analyzer::ast::AstFile;
+use crate::source::Source;
 
 pub fn assert_fails(code: &str) {
-    let code = from_str(code);
+    let code = Source::from_str(code);
 
-    let ref mut tokenizer = Tokenizer::new(code.clone());
-    let tokens = tokenizer.read_tokens().unwrap();
-
-    let file = match Parser::parse_kotlin_file(code.clone(), tokens) {
+    let file = match Parser::from(code.clone()).parse_file() {
         Ok(it) => it,
         Err(it) => {
-            println!("ParsingError: {}\n", it);
+            println!("ParsingError: {:?}\n", it);
             return
         }
     };
@@ -33,12 +29,9 @@ pub fn assert_fails(code: &str) {
 }
 
 pub fn assert_success(code: &str){
-    let code = from_str(code);
+    let code = Source::from_str(code);
 
-    let ref mut tokenizer = Tokenizer::new(code.clone());
-    let tokens = tokenizer.read_tokens().unwrap();
-
-    let file = Parser::parse_kotlin_file(code.clone(), tokens).unwrap();
+    let file = Parser::from(code.clone()).parse_file().unwrap();
 
     let (ast, errors) = file_to_ast(code.clone(), &file);
     let ast = dbg!(ast);
@@ -49,12 +42,6 @@ pub fn assert_success(code: &str){
     }
 
     assert_eq!(errors.len(), 0);
-
-//    check_types(vec![CheckedFile{
-//        path: "<builtin>".to_string(),
-//        code: code.clone(),
-//        ast
-//    }]);
 }
 
 //pub fn assert_correct_ast(code: &str) -> CheckedFile {
@@ -90,13 +77,11 @@ pub fn assert_success(code: &str){
 //    return list.into_iter().next().unwrap();
 //}
 
-pub fn assert_correct_ast2(code: &str) -> (SourceCode, AstFile) {
-    let code = from_str(code);
+#[cfg(test)]
+pub fn assert_correct_ast2(code: &str) -> (Source, AstFile) {
+    let code = Source::from_str(code);
 
-    let ref mut tokenizer = Tokenizer::new(code.clone());
-    let tokens = tokenizer.read_tokens().unwrap();
-
-    let file = Parser::parse_kotlin_file(code.clone(), tokens).unwrap();
+    let file = Parser::from(code.clone()).parse_file().unwrap();
 
     let (ast, errors) = file_to_ast(code.clone(), &file);
     let ast = dbg!(ast);

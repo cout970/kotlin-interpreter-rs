@@ -7,14 +7,14 @@ use crate::analyzer::typechecker::collect_file_symbols::collect_file_symbols;
 use crate::analyzer::typechecker::resolve_imports::resolve_imports;
 use crate::errors::KtError;
 use crate::parser::parse_tree::*;
-use crate::source_code::SourceCode;
+
 
 mod collect_file_symbols;
 mod resolve_imports;
 mod compiler;
 
 pub struct TypeChecker {
-    code: SourceCode,
+    code: Source,
 }
 
 pub struct FileSymbols {
@@ -35,24 +35,24 @@ impl FileSymbols {
 
 pub struct RawFile {
     pub path: String,
-    pub code: SourceCode,
+    pub code: Source,
 }
 
 pub struct ParsedFile {
     pub path: String,
-    pub code: SourceCode,
+    pub code: Source,
     pub ast: KotlinFile,
 }
 
 pub struct CheckedFile {
     pub path: String,
-    pub code: SourceCode,
+    pub code: Source,
     pub ast: AstFile,
 }
 
 //pub struct AnalyzedFile {
 //    pub path: String,
-//    pub code: SourceCode,
+//    pub code: Source,
 //    pub ast: AstFile,
 //
 //}

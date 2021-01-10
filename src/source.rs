@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -33,7 +34,7 @@ pub enum SourceOrigin {
 }
 
 /// The offset from the beginning of the program source to the position of a byte
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct BytePos(pub u32);
 
 /// A reference to a single byte in the program source
@@ -54,7 +55,7 @@ pub struct CharPos {
 
 /// Start and end of a section of the source
 /// Defined by the byte positions
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
 pub struct ByteSpan { start: BytePos, end: BytePos }
 
 /// Start and end of a section of the source
@@ -112,6 +113,15 @@ impl Source {
         })
     }
 
+    pub fn contains_newline(&self, span: ByteSpan) -> bool {
+        for i in (span.start.0)..(span.end.0) {
+            if self.content[i as usize] == b'\n' {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn len(&self) -> usize {
         self.content.len()
     }
@@ -155,13 +165,111 @@ impl ByteSpan {
         }
     }
 
-    pub fn to_code_span(&self, source: Source) -> SourceSpan {
+    pub fn from(start: BytePos, end: BytePos) -> ByteSpan {
+        ByteSpan {
+            start,
+            end,
+        }
+    }
+
+    pub fn start(&self) -> BytePos {
+        self.start
+    }
+
+    pub fn end(&self) -> BytePos {
+        self.start
+    }
+
+    pub fn to_source_span(&self, source: Source) -> SourceSpan {
         SourceSpan {
             byte_span: *self,
             start: source.new_code_ref(self.start).to_char_pos(),
             end: source.new_code_ref(self.end).to_char_pos(),
             source,
         }
+    }
+}
+
+impl Display for SourceSpan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let byte_input: &[u8] = self.source.content.as_slice();
+        let marker_start = self.byte_span.start().0 as usize;
+        let marker_end = self.byte_span.end().0 as usize;
+        let byte_input_len = byte_input.len() - SOURCE_CODE_PADDING;
+
+        if byte_input_len <= 0 {
+            return write!(f, "<no code>");
+        }
+
+        let mut line_start = marker_start.min(byte_input_len - 1).max(0);
+        let mut line_end = marker_end.min(byte_input_len - 1).max(0);
+
+        while line_start > 0 {
+            if byte_input[line_start] == b'\n' {
+                line_start += 1;
+                break;
+            }
+            line_start -= 1;
+        }
+
+        while line_end < byte_input_len {
+            if byte_input[line_end] == b'\n' {
+                break;
+            }
+            line_end += 1;
+        }
+
+        let mut line = String::new();
+        let mut pointer = String::new();
+        let mut trail = String::new();
+
+        for index in line_start..line_end {
+            if byte_input[index] != b' ' && !byte_input[index].is_ascii_graphic() {
+                if index == marker_start {
+                    trail.push('─');
+                    trail.push('┘');
+                    pointer.push(' ');
+                    pointer.push('\u{028C}');
+                } else if index < marker_start {
+                    trail.push('─');
+                    trail.push('─');
+                    pointer.push(' ');
+                    pointer.push(' ');
+                } else if index < marker_end {
+                    pointer.push('\u{028C}');
+                }
+
+                line.push('\\');
+                line.push(match byte_input[index] {
+                    b'\n' => 'n',
+                    b'\t' => 't',
+                    b'\r' => 'r',
+                    b'\0' => '0',
+                    _ => '?',
+                });
+            } else {
+                if index == marker_start {
+                    trail.push('┘');
+                    pointer.push('\u{028C}');
+                } else if index < marker_start {
+                    trail.push('─');
+                    pointer.push(' ');
+                } else if index < marker_end {
+                    pointer.push('\u{028C}');
+                }
+                line.push(byte_input[index] as char);
+            }
+        }
+
+        let line_num = (&byte_input[0..marker_start]).iter().filter(|&i| *i == b'\n').count();
+        let line_num_str = format!("{}", line_num + 1);
+        let mut spaces = String::new();
+
+        for _ in 0..line_num_str.len() {
+            spaces.push(' ');
+        }
+
+        return write!(f, "\n{} │ {}\n{} │ {}\n{} │ {}", line_num_str, line, spaces, pointer, spaces, trail);
     }
 }
 

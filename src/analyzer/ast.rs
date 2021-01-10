@@ -1,12 +1,26 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::interpreter::bytecode::Constant;
-use crate::source_code::Span;
+use crate::source::ByteSpan;
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Constant {
+    Null,
+    Array(Vec<Constant>),
+    Boolean(bool),
+    Double(f64),
+    Float(f32),
+    Byte(i8),
+    Short(i16),
+    Int(i32),
+    Long(i64),
+    Char(char),
+    String(String),
+}
 
 #[derive(Clone, PartialEq)]
 pub struct AstType {
-    pub span: Span,
+    pub span: ByteSpan,
     // B
     pub name: String,
     // A.B
@@ -36,14 +50,14 @@ pub struct AstFile {
 
 #[derive(Clone, PartialEq)]
 pub struct AstTypealias {
-    pub span: Span,
+    pub span: ByteSpan,
     pub name: String,
     pub ty: AstType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstImport {
-    pub span: Span,
+    pub span: ByteSpan,
     pub name: String,
     pub alias: Option<String>,
 }
@@ -64,7 +78,7 @@ pub struct AstLocalProperty {
 
 #[derive(Clone, PartialEq)]
 pub struct AstProperty {
-    pub span: Span,
+    pub span: ByteSpan,
     pub var: AstVar,
     pub delegated: bool,
     pub expr: Option<AstExpr>,
@@ -74,7 +88,7 @@ pub struct AstProperty {
 
 #[derive(Clone, PartialEq)]
 pub struct AstFunction {
-    pub span: Span,
+    pub span: ByteSpan,
     pub extension: bool,
     pub operator: bool,
     pub member: bool,
@@ -87,7 +101,7 @@ pub struct AstFunction {
 
 #[derive(Clone, PartialEq)]
 pub struct AstLambda {
-    pub span: Span,
+    pub span: ByteSpan,
     pub extension: bool,
     pub args: Vec<AstVar>,
     pub return_ty: Option<AstType>,
@@ -97,7 +111,7 @@ pub struct AstLambda {
 #[derive(Clone, PartialEq, Default)]
 pub struct AstClass {
     // visibility: ignored for now
-    pub span: Span,
+    pub span: ByteSpan,
     pub name: String,
     pub inner: bool,
     pub class_type: AstClassType,
@@ -155,18 +169,18 @@ pub enum AstStatement {
     Function(AstFunction),
     Property(AstLocalProperty),
     For {
-        span: Span,
+        span: ByteSpan,
         variables: Vec<AstVar>,
         expr: MutRc<AstExpr>,
         body: AstBlock,
     },
     While {
-        span: Span,
+        span: ByteSpan,
         expr: MutRc<AstExpr>,
         body: AstBlock,
     },
     DoWhile {
-        span: Span,
+        span: ByteSpan,
         expr: MutRc<AstExpr>,
         body: AstBlock,
     },
@@ -188,68 +202,68 @@ pub fn mut_rc<T>(a: T) -> MutRc<T> {
 #[derive(Clone, PartialEq)]
 pub enum AstExpr {
     Lambda {
-        span: Span,
+        span: ByteSpan,
         block: AstLambda,
     },
     AnonymousFunction {
-        span: Span,
+        span: ByteSpan,
         block: AstFunction,
     },
     ObjectLiteral {
-        span: Span,
+        span: ByteSpan,
         block: AstClass,
     },
     Constant {
-        span: Span,
+        span: ByteSpan,
         value: Constant,
     },
     Ref {
-        span: Span,
+        span: ByteSpan,
         obj: Option<MutRc<AstExpr>>,
         name: String,
     },
     Call {
-        span: Span,
+        span: ByteSpan,
         receiver: Option<MutRc<AstExpr>>,
         function: String,
         type_parameters: Vec<AstTypeParameter>,
         args: Vec<AstExpr>,
     },
     Is {
-        span: Span,
+        span: ByteSpan,
         expr: MutRc<AstExpr>,
         ty: AstType,
     },
     If {
-        span: Span,
+        span: ByteSpan,
         cond: MutRc<AstExpr>,
         if_true: AstBlock,
         if_false: Option<AstBlock>,
     },
     Continue {
-        span: Span,
+        span: ByteSpan,
     },
     Break {
-        span: Span,
+        span: ByteSpan,
     },
     Try {
-        span: Span,
+        span: ByteSpan,
         body: AstBlock,
         catch: Vec<(AstVar, AstBlock)>,
         finally: Option<AstBlock>,
     },
     Throw {
-        span: Span,
+        span: ByteSpan,
         exception: MutRc<AstExpr>,
     },
     Return {
-        span: Span,
+        span: ByteSpan,
         value: Option<MutRc<AstExpr>>,
     },
 }
 
 #[derive(Clone, PartialEq)]
 pub struct AstBlock {
-    pub span: Span,
+    pub span: ByteSpan,
     pub statements: Vec<AstStatement>,
 }

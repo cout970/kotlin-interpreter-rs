@@ -6,15 +6,14 @@ use crate::analyzer::type_parameters::check_type_parameters;
 use crate::create_vec;
 use crate::errors::AnalyserError;
 use crate::errors::KtError;
-use crate::interpreter::bytecode::Constant;
-use crate::Number;
 use crate::parser::parse_tree::*;
-use crate::source_code::SourceCode;
-use crate::source_code::Span;
+
 use crate::generate_rand_str;
+use crate::source::{Source, ByteSpan};
+use crate::token::Number;
 
 struct Context {
-    code: SourceCode,
+    code: Source,
     errors: Vec<KtError>,
     modifier_ctx: Vec<ModifierCtx>,
     env_type: Vec<EnvType>,
@@ -29,14 +28,14 @@ enum EnvType {
 
 lazy_static! {
     pub static ref UNIT_TYPE: AstType = AstType {
-        span: (0, 0),
+        span: Default::default(),
         name: "Unit".to_string(),
         full_name: "kotlin.Unit".to_string(),
         type_parameters: Vec::new(),
         nullable: false,
     };
     pub static ref NOTHING_TYPE: AstType = AstType {
-        span: (0, 0),
+        span: Default::default(),
         name: "Nothing".to_string(),
         full_name: "kotlin.Nothing".to_string(),
         type_parameters: Vec::new(),
@@ -45,7 +44,7 @@ lazy_static! {
 }
 
 impl Context {
-    fn new_error(&mut self, span: Span, info: AnalyserError) {
+    fn new_error(&mut self, span: ByteSpan, info: AnalyserError) {
         self.errors.push(KtError::Analyser {
             code: self.code.clone(),
             span,
@@ -53,7 +52,7 @@ impl Context {
         });
     }
 
-    fn add_errors(&mut self, span: Span, errors: Vec<AnalyserError>) {
+    fn add_errors(&mut self, span: ByteSpan, errors: Vec<AnalyserError>) {
         for x in errors {
             self.errors.push(KtError::Analyser {
                 code: self.code.clone(),
@@ -63,18 +62,18 @@ impl Context {
         }
     }
 
-    fn check_modifiers(&mut self, span: Span, modifiers: &Vec<Modifier>, target: ModifierTarget) {
+    fn check_modifiers(&mut self, span: ByteSpan, modifiers: &Vec<Modifier>, target: ModifierTarget) {
         self.add_errors(span, check_modifiers(modifiers, *self.modifier_ctx.last().unwrap(), target));
     }
 
-    fn check_type_parameters(&mut self, span: Span, params: &Vec<TypeParameter>, constraints: &Vec<TypeConstraint>) {
+    fn check_type_parameters(&mut self, span: ByteSpan, params: &Vec<TypeParameter>, constraints: &Vec<TypeConstraint>) {
         self.add_errors(span, check_type_parameters(params, constraints));
     }
 }
 
-pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
+pub fn file_to_ast(code: Source, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
     let mut ctx = Context {
-        code: code.clone(),
+        code,
         errors: vec![],
         modifier_ctx: vec![],
         env_type: vec![EnvType::TopLevel],
@@ -85,7 +84,6 @@ pub fn file_to_ast(code: SourceCode, file: &KotlinFile) -> (AstFile, Vec<KtError
     let mut properties = vec![];
     let mut typealias = vec![];
     let mut imports = vec![];
-
 
     for import in &file.preamble.imports {
         imports.push(AstImport {
@@ -307,7 +305,7 @@ fn class_to_ast(ctx: &mut Context, class: &Class) -> AstClass {
     }
 }
 
-fn enum_entries_to_ast(_ctx: &mut Context, span: Span, class_body: &ClassBody, members: &mut Vec<AstMember>) {
+fn enum_entries_to_ast(_ctx: &mut Context, span: ByteSpan, class_body: &ClassBody, members: &mut Vec<AstMember>) {
     for entry in &class_body.enum_entries {
         members.push(AstMember::Class(AstClass {
             span,
@@ -881,7 +879,7 @@ fn expr_to_ast(ctx: &mut Context, expr: &ExprVal) -> AstExpr {
     }
 }
 
-fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfix: &Vec<ExprPostfix>) -> AstExpr {
+fn convert_postfix_to_expr(ctx: &mut Context, span: ByteSpan, expr: &ExprRef, postfix: &Vec<ExprPostfix>) -> AstExpr {
     let mut ast = expr_to_ast(ctx, expr);
     for post in postfix {
         match post {
@@ -939,7 +937,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
 
                 if let AstExpr::Ref { name, .. } = &ast {
                     ast = AstExpr::Call {
-                        span: (span.0, suffix.span.1),
+                        span: ByteSpan::from(span.start(), suffix.span.end()),
                         receiver: None,
                         function: name.to_string(),
                         type_parameters,
@@ -947,7 +945,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
                     };
                 } else {
                     ast = AstExpr::Call {
-                        span: (span.0, suffix.span.1),
+                        span: ByteSpan::from(span.start(), suffix.span.end()),
                         receiver: Some(mut_rc(ast)),
                         function: "invoke".to_string(),
                         type_parameters,
@@ -968,7 +966,7 @@ fn convert_postfix_to_expr(ctx: &mut Context, span: Span, expr: &ExprRef, postfi
     ast
 }
 
-fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, expr: &ExprRef) -> AstExpr {
+fn convert_prefix_to_expr(ctx: &mut Context, span: ByteSpan, prefix: &Vec<String>, expr: &ExprRef) -> AstExpr {
     if prefix.is_empty() {
         return expr_to_ast(ctx, expr);
     }
@@ -993,7 +991,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
             };
 
             // TODO
-            AstExpr::Continue { span: (0, 0) }
+            AstExpr::Continue { span: Default::default() }
 //            AstExpr::WriteRef {
 //                span,
 //                name: variable.to_owned(),
@@ -1026,7 +1024,7 @@ fn convert_prefix_to_expr(ctx: &mut Context, span: Span, prefix: &Vec<String>, e
     }
 }
 
-fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<StringComponent>) -> AstExpr {
+fn convert_string_template_to_expr(ctx: &mut Context, span: ByteSpan, parts: &Vec<StringComponent>) -> AstExpr {
     let mut str_expr = vec![];
 
     // Extract sub expressions
@@ -1076,7 +1074,7 @@ fn convert_string_template_to_expr(ctx: &mut Context, span: Span, parts: &Vec<St
     ast
 }
 
-fn convert_when_to_ifs(ctx: &mut Context, span: Span, expr: &Option<ExprRef>, entries: &Vec<WhenEntry>) -> AstExpr {
+fn convert_when_to_ifs(ctx: &mut Context, span: ByteSpan, expr: &Option<ExprRef>, entries: &Vec<WhenEntry>) -> AstExpr {
     let mut pairs: Vec<(AstExpr, AstBlock)> = vec![];
     let mut else_value: Option<AstBlock> = None;
 
@@ -1214,7 +1212,7 @@ fn type_to_ast(ctx: &mut Context, ty: &Type) -> AstType {
     type_reference_to_ast(ctx, ty.span, ty.reference.as_ref())
 }
 
-fn type_reference_to_ast(ctx: &mut Context, span: Span, ty: &TypeReference) -> AstType {
+fn type_reference_to_ast(ctx: &mut Context, span: ByteSpan, ty: &TypeReference) -> AstType {
     match ty {
         TypeReference::Function(func) => type_func_to_ast(ctx, span, func),
         TypeReference::UserType(user) => simple_user_type_to_ast(ctx, span, user),
@@ -1239,7 +1237,7 @@ fn type_reference_to_ast(ctx: &mut Context, span: Span, ty: &TypeReference) -> A
     }
 }
 
-fn type_func_to_ast(ctx: &mut Context, span: Span, ty: &FunctionType) -> AstType {
+fn type_func_to_ast(ctx: &mut Context, span: ByteSpan, ty: &FunctionType) -> AstType {
     let mut type_parameters = vec![];
 
     if let Some(rec) = &ty.receiver {
@@ -1261,7 +1259,7 @@ fn type_func_to_ast(ctx: &mut Context, span: Span, ty: &FunctionType) -> AstType
     }
 }
 
-fn simple_user_type_to_ast(ctx: &mut Context, span: Span, ty: &Vec<SimpleUserType>) -> AstType {
+fn simple_user_type_to_ast(ctx: &mut Context, span: ByteSpan, ty: &Vec<SimpleUserType>) -> AstType {
     let last = ty.last().unwrap();
     let mut full_name = String::new();
     let mut type_parameters = vec![];
@@ -1329,10 +1327,9 @@ fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Ve
         while let Some(expr) = iter.next() {
             let op = op_iter.next().unwrap();
             let next = expr_to_ast(ctx, expr);
-            let span = (get_span(&tree).0, (expr.0).1);
 
             tree = AstExpr::Call {
-                span,
+                span: ByteSpan::from(get_span(&tree).start(), (expr.0).end()),
                 receiver: Some(mut_rc(tree)),
                 function: op.to_owned(),
                 type_parameters: vec![],
@@ -1344,7 +1341,7 @@ fn expr_chain_to_tree(ctx: &mut Context, operands: &Vec<ExprVal>, operators: &Ve
     }
 }
 
-fn get_span(expr: &AstExpr) -> Span {
+fn get_span(expr: &AstExpr) -> ByteSpan {
     match expr {
         AstExpr::Lambda { span, .. } => *span,
         AstExpr::AnonymousFunction { span, .. } => *span,

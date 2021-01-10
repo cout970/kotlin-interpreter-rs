@@ -8,8 +8,7 @@ mod type_parameters;
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::assert_success;
-    use crate::test_utils::assert_fails;
+    use crate::utils::{assert_success, assert_fails};
 
     #[test]
     fn check_properties() {

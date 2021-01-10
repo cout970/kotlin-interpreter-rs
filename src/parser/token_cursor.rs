@@ -1,75 +1,115 @@
-use crate::errors::KtError;
-use crate::errors::ParserError;
-use crate::source_code::from_str;
-use crate::source_code::SourceCode;
-use crate::source_code::Span;
-use crate::tokenizer::token::Token;
-use crate::tokenizer::Tokenizer;
+use std::collections::VecDeque;
+
+use crate::parser::{Parser, ParserError, ParserErrorKind};
+use crate::source::{BytePos, ByteSpan, Source};
+use crate::source_cursor::SourceCursor;
+use crate::token_stream::{TokenStream, TokenStreamError};
+use crate::token::Token;
+
+const TOKEN_LOOK_AHEAD: usize = 4;
 
 pub struct TokenCursor {
-    code: SourceCode,
-    tokens: Vec<(Span, Token)>,
+    stream: TokenStream,
+    tokens: Vec<Token>,
+    spans: Vec<ByteSpan>,
     pos: u32,
 }
 
-pub fn get_token_cursor(code: SourceCode, tokens: Vec<(Span, Token)>) -> TokenCursor {
-    TokenCursor { code, tokens, pos: 0 }
-}
-
-pub fn get_ast<F, T>(c: &str, func: F) -> T
-    where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
-    let code = from_str(c);
-    let mut code_cursor = Tokenizer::new(code.clone());
-    let tks = code_cursor.read_tokens().unwrap();
-
-    // Debug {
-    for (_, x) in &tks {
-        print!("{} ", x);
-    }
-    println!();
-    // }
-
-    let mut token_cursor = get_token_cursor(code.clone(), tks);
-    token_cursor.complete(&func).unwrap()
-}
-
 impl TokenCursor {
-    pub fn read_token(&mut self, offset: usize) -> Token {
-        self.tokens[self.pos as usize + offset].1.clone()
-    }
-
-    pub fn read_token_span(&mut self, offset: usize) -> Span {
-        self.tokens[self.pos as usize + offset].0
-    }
-
-    pub fn start(&mut self) -> u32 {
-        self.read_token_span(0).0
-    }
-
-    pub fn end(&mut self) -> u32 {
-        if self.pos > 0 {
-            (self.tokens[(self.pos - 1) as usize].0).1
-        } else {
-            0
+    pub fn new(stream: TokenStream) -> Self {
+        Self {
+            stream,
+            tokens: Vec::new(),
+            spans: Vec::new(),
+            pos: 0,
         }
     }
 
-    pub fn next(&mut self) {
-        self.pos += 1;
+    fn ensure_look_ahead(&mut self) -> Result<(), ParserError> {
+        while self.tokens.len() < self.pos as usize + TOKEN_LOOK_AHEAD {
+            match self.stream.next() {
+                Ok((tk, span)) => {
+                    self.tokens.push(tk);
+                    self.spans.push(span);
+                }
+                Err(e) => {
+                    return Err(ParserError {
+                        span: e.span,
+                        kind: ParserErrorKind::TokenStreamError {
+                            kind: e.kind
+                        },
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
-    pub fn make_error<T>(&mut self, span: Span, info: ParserError) -> Result<T, KtError> {
-        Err(KtError::Parser {
-            code: self.code.clone(),
-            span,
-            info,
+    pub fn init(&mut self) -> Result<(), ParserError> {
+        self.ensure_look_ahead()
+    }
+
+    pub fn token(&self) -> &Token {
+        &self.tokens[self.pos as usize]
+    }
+
+    pub fn offset_token(&self, offset: usize) -> &Token {
+        debug_assert!(offset <= TOKEN_LOOK_AHEAD);
+
+        &self.tokens[self.pos as usize + offset]
+    }
+
+    pub fn span(&self) -> ByteSpan {
+        self.spans[self.pos as usize]
+    }
+
+    pub fn offset_span(&self, offset: usize) -> ByteSpan {
+        debug_assert!(offset <= TOKEN_LOOK_AHEAD);
+        self.spans[self.pos as usize + offset]
+    }
+
+    fn prev_token(&self) -> Token {
+        if self.pos > 0 {
+            self.tokens[self.pos as usize - 1].clone()
+        } else {
+            Token::EOF
+        }
+    }
+
+    fn prev_span(&self) -> ByteSpan {
+        if self.pos > 0 {
+            self.spans[self.pos as usize - 1]
+        } else {
+            ByteSpan::new(0, 0)
+        }
+    }
+
+    pub fn start(&self) -> BytePos {
+        self.span().start()
+    }
+
+    pub fn end(&self) -> BytePos {
+        self.prev_span().end()
+    }
+
+    pub fn next(&mut self) -> Result<(), ParserError> {
+        debug_assert!(!self.tokens.is_empty());
+        self.pos += 1;
+        self.ensure_look_ahead()?;
+        Ok(())
+    }
+
+    pub fn make_error<T>(&mut self, span: ByteSpan, kind: ParserErrorKind) -> Result<T, ParserError> {
+        Err(ParserError {
+            span: span.to_source_span(self.stream.source()),
+            kind,
         })
     }
 
-    pub fn make_error_expected_of<T>(&mut self, options: Vec<Token>) -> Result<T, KtError> {
-        let span = self.read_token_span(0);
-        let found = self.read_token(0);
-        return self.make_error(span, ParserError::ExpectedTokenOf { found, options });
+    pub fn make_error_expected_of<T>(&mut self, options: Vec<Token>) -> Result<T, ParserError> {
+        let span = self.span();
+        let found = self.token().clone();
+        return self.make_error(span, ParserErrorKind::ExpectedTokenOf { found, options });
     }
 
     pub fn save(&self) -> u32 {
@@ -80,8 +120,8 @@ impl TokenCursor {
         self.pos = saved;
     }
 
-    pub fn many0<T, F>(&mut self, func: &F) -> Result<Vec<T>, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn many0<T, F>(&mut self, func: &F) -> Result<Vec<T>, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let mut accum: Vec<T> = vec![];
 
         loop {
@@ -99,8 +139,8 @@ impl TokenCursor {
         Ok(accum)
     }
 
-    pub fn many1<T, F>(&mut self, func: &F) -> Result<Vec<T>, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn many1<T, F>(&mut self, func: &F) -> Result<Vec<T>, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let mut accum: Vec<T> = vec![];
 
         let first = func(self)?;
@@ -121,8 +161,8 @@ impl TokenCursor {
         Ok(accum)
     }
 
-    pub fn separated_by<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn separated_by<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let mut accum: Vec<T> = vec![];
 
         let first = func(self)?;
@@ -130,7 +170,7 @@ impl TokenCursor {
 
         loop {
             let save = self.save();
-            if !self.optional_expect(tk.clone()) {
+            if !self.optional_expect(tk.clone())? {
                 break;
             }
             let res = match func(self) {
@@ -146,8 +186,8 @@ impl TokenCursor {
         Ok(accum)
     }
 
-    pub fn optional_separated_by<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn optional_separated_by<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let mut accum: Vec<T> = vec![];
 
         let save = self.save();
@@ -161,15 +201,15 @@ impl TokenCursor {
 
         accum.push(res);
 
-        while self.optional_expect(tk.clone()) {
+        while self.optional_expect(tk.clone())? {
             accum.push(func(self)?);
         }
 
         Ok(accum)
     }
 
-    pub fn optional_separated_by_many1<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn optional_separated_by_many1<T, F>(&mut self, tk: Token, func: &F) -> Result<Vec<T>, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let mut accum: Vec<T> = vec![];
 
         loop {
@@ -182,10 +222,10 @@ impl TokenCursor {
                 }
             };
             accum.push(res);
-            if !self.optional_expect(tk.clone()) {
+            if !self.optional_expect(tk.clone())? {
                 break;
             } else {
-                while self.optional_expect(tk.clone()) {}
+                while self.optional_expect(tk.clone())? {}
             }
         }
 
@@ -193,7 +233,7 @@ impl TokenCursor {
     }
 
     pub fn optional<T, F>(&mut self, func: &F) -> Option<T>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let save = self.save();
         match func(self) {
             Ok(t) => Some(t),
@@ -205,7 +245,7 @@ impl TokenCursor {
     }
 
     pub fn optional_vec<T, F>(&mut self, func: &F) -> Vec<T>
-        where F: Fn(&mut TokenCursor) -> Result<Vec<T>, KtError> {
+        where F: Fn(&mut TokenCursor) -> Result<Vec<T>, ParserError> {
         let save = self.save();
         match func(self) {
             Ok(t) => t,
@@ -216,9 +256,9 @@ impl TokenCursor {
         }
     }
 
-    pub fn chain<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), KtError>
-        where F1: Fn(&mut TokenCursor) -> Result<OR, KtError>,
-              F2: Fn(&mut TokenCursor) -> Result<OS, KtError>,
+    pub fn chain<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), ParserError>
+        where F1: Fn(&mut TokenCursor) -> Result<OR, ParserError>,
+              F2: Fn(&mut TokenCursor) -> Result<OS, ParserError>,
     {
         let mut accum_operands: Vec<OS> = vec![];
         let mut accum_operators: Vec<OR> = vec![];
@@ -233,9 +273,9 @@ impl TokenCursor {
         Ok((accum_operands, accum_operators))
     }
 
-    pub fn chain_break<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), KtError>
-        where F1: Fn(&mut TokenCursor) -> Result<OR, KtError>,
-              F2: Fn(&mut TokenCursor) -> Result<OS, KtError>,
+    pub fn chain_break<F1, F2, OS, OR>(&mut self, operators: &F1, operands: &F2) -> Result<(Vec<OS>, Vec<OR>), ParserError>
+        where F1: Fn(&mut TokenCursor) -> Result<OR, ParserError>,
+              F2: Fn(&mut TokenCursor) -> Result<OS, ParserError>,
     {
         let mut accum_operands: Vec<OS> = vec![];
         let mut accum_operators: Vec<OR> = vec![];
@@ -255,108 +295,115 @@ impl TokenCursor {
         Ok((accum_operands, accum_operators))
     }
 
-    pub fn expect(&mut self, tk: Token) -> Result<(), KtError> {
-        if tk == self.read_token(0) {
-            self.next();
+    pub fn expect(&mut self, tk: Token) -> Result<(), ParserError> {
+        if &tk == self.token() {
+            self.next()?;
             Ok(())
         } else {
-            let span = self.read_token_span(0);
-            let found = self.read_token(0);
+            let span = self.span();
+            let found = self.token().clone();
 
-            if tk == Token::EOF {
-                return self.make_error(
-                    span, ParserError::UnexpectedToken { found },
-                );
+            return if tk == Token::EOF {
+                self.make_error(
+                    span, ParserErrorKind::UnexpectedToken { found },
+                )
             } else {
-                return self.make_error(
-                    span, ParserError::ExpectedToken { expected: tk, found },
-                );
-            }
+                self.make_error(
+                    span, ParserErrorKind::ExpectedToken { expected: tk, found },
+                )
+            };
         }
     }
 
-    pub fn optional_expect(&mut self, tk: Token) -> bool {
-        if tk == self.read_token(0) {
-            self.next();
-            true
+    pub fn optional_expect(&mut self, tk: Token) -> Result<bool, ParserError> {
+        if &tk == self.token() {
+            self.next()?;
+            Ok(true)
         } else {
-            false
+            Ok(false)
         }
     }
 
-    pub fn semi(&mut self) {
-        self.optional_expect(Token::Semicolon);
+    pub fn semi(&mut self) -> Result<(), ParserError>{
+        self.optional_expect(Token::Semicolon)?;
+        Ok(())
     }
 
     pub fn at_newline(&mut self) -> bool {
-        let previous = self.pos.max(1) - 1;
-        let this = self.pos;
+        let start = self.prev_span().end();
+        let end = self.span().start();
+        let source = self.stream.source();
 
-        let start = (self.tokens[previous as usize].0).1;
-        let end = (self.tokens[this as usize].0).0;
-
-        for i in start..end {
-            if *self.code.get(i as usize).unwrap() == b'\n' {
-                return true;
-            }
-        }
-        false
+        return source.contains_newline(ByteSpan::from(start, end));
     }
 
-    pub fn optional_expect_keyword(&mut self, keyword: &str) -> bool {
-        if let Token::Id(name) = self.read_token(0) {
-            if keyword == &name {
-                self.next();
-                true
+    pub fn optional_expect_keyword(&mut self, keyword: &str) -> Result<bool, ParserError> {
+        if let Token::Id(name) = self.token() {
+            if keyword == name {
+                self.next()?;
+                Ok(true)
             } else {
-                false
+                Ok(false)
             }
         } else {
-            false
+            Ok(false)
         }
     }
 
-    pub fn expect_id(&mut self) -> Result<String, KtError> {
-        if let Token::Id(name) = self.read_token(0) {
-            self.next();
+    pub fn expect_id(&mut self) -> Result<String, ParserError> {
+        if let Token::Id(name) = self.token().clone() {
+            self.next()?;
             Ok(name)
         } else {
-            let span = self.read_token_span(0);
-            let found = self.read_token(0);
+            let span = self.span();
+            let found = self.token().clone();
 
             return self.make_error(
-                span, ParserError::ExpectedTokenId { found },
+                span, ParserErrorKind::ExpectedTokenId { found },
             );
         }
     }
 
-    pub fn expect_keyword(&mut self, keyword: &str) -> Result<String, KtError> {
-        if let Token::Id(name) = self.read_token(0) {
+    pub fn expect_keyword(&mut self, keyword: &str) -> Result<String, ParserError> {
+        if let Token::Id(name) = self.token().clone() {
             if &name == keyword {
-                self.next();
+                self.next()?;
                 return Ok(name);
             }
 
-            let span = self.read_token_span(0);
-            let found = self.read_token(0);
+            let span = self.span();
+            let found = self.token().clone();
 
-            return self.make_error(
-                span, ParserError::ExpectedTokenId { found },
-            );
+            self.make_error(
+                span, ParserErrorKind::ExpectedTokenId { found },
+            )
         } else {
-            let span = self.read_token_span(0);
-            let found = self.read_token(0);
+            let span = self.span();
+            let found = self.token().clone();
 
-            return self.make_error(
-                span, ParserError::ExpectedTokenId { found },
-            );
+            self.make_error(
+                span, ParserErrorKind::ExpectedTokenId { found },
+            )
         }
     }
 
-    pub fn complete<T, F>(&mut self, func: &F) -> Result<T, KtError>
-        where F: Fn(&mut TokenCursor) -> Result<T, KtError> {
+    pub fn complete<T, F>(&mut self, func: &F) -> Result<T, ParserError>
+        where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
         let t = func(self)?;
         self.expect(Token::EOF)?;
         Ok(t)
     }
+}
+
+pub fn get_ast<F, T>(c: &str, func: F) -> T
+    where F: Fn(&mut TokenCursor) -> Result<T, ParserError> {
+    let mut cursor = TokenCursor::new(
+        TokenStream::new(
+            SourceCursor::new(
+                Source::from_str(c)
+            )
+        )
+    );
+
+    func(&mut cursor).expect("Error returned by function")
 }

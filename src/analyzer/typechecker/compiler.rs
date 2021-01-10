@@ -28,7 +28,7 @@ use crate::interpreter::bytecode::Constant;
 use crate::interpreter::bytecode::Instruction;
 use crate::Number;
 use crate::parser::parse_tree::*;
-use crate::source_code::SourceCode;
+
 use crate::source_code::Span;
 
 struct EnvBlock {
@@ -53,7 +53,7 @@ struct Env {
 struct Compiler {
     file: KotlinFile,
     env: Env,
-    code: SourceCode,
+    code: Source,
     next_id: u32,
     type_codes: HashMap<String, String>,
     constants: HashMap<String, Constant>,
@@ -249,7 +249,7 @@ impl Compiler {
     }
 }
 
-//pub fn compile_file(code: SourceCode, file: KotlinFile, expr: &Expr) -> Result<CompiledFile, Vec<KtError>> {
+//pub fn compile_file(code: Source, file: KotlinFile, expr: &Expr) -> Result<CompiledFile, Vec<KtError>> {
 //    let ctx = Context { file, code, env: vec![] };
 //
 //    let compiler = Compiler {

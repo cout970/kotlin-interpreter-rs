@@ -1,4 +1,3 @@
-use crate::Number;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -90,4 +89,14 @@ pub enum Token {
     While,
     // End of file
     EOF,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum Number {
+    Double(f64),
+    Float(f32),
+    Byte(i8),
+    Short(i16),
+    Int(i32),
+    Long(i64),
 }
