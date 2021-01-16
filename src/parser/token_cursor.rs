@@ -1,10 +1,11 @@
 use std::collections::VecDeque;
 
 use crate::parser::{Parser, ParserError, ParserErrorKind};
-use crate::source::{BytePos, ByteSpan, Source};
+use crate::source::{BytePos, ByteSpan, Source, SourceSpan};
 use crate::source_cursor::SourceCursor;
-use crate::token_stream::{TokenStream, TokenStreamError};
 use crate::token::Token;
+use crate::token_stream::{TokenStream, TokenStreamError};
+use backtrace::Backtrace;
 
 const TOKEN_LOOK_AHEAD: usize = 4;
 
@@ -61,6 +62,14 @@ impl TokenCursor {
 
     pub fn span(&self) -> ByteSpan {
         self.spans[self.pos as usize]
+    }
+
+    pub fn make_span(&self, start: BytePos) -> ByteSpan {
+        ByteSpan::from(start, BytePos(start.0.max(self.end().0)))
+    }
+
+    pub fn make_source_span(&self, start: BytePos) -> SourceSpan {
+        ByteSpan::from(start, self.end()).to_source_span(self.stream.source())
     }
 
     pub fn offset_span(&self, offset: usize) -> ByteSpan {
@@ -297,6 +306,14 @@ impl TokenCursor {
 
     pub fn expect(&mut self, tk: Token) -> Result<(), ParserError> {
         if &tk == self.token() {
+            // DEBUG
+            // {
+            //     let backtrace = Backtrace::new();
+            //     let symbol_names = backtrace.frames().iter().flat_map(|i| i.symbols()).map(|i| i.name()).collect::<Vec<_>>();
+            //     let none = None;
+            //     let parent = symbol_names.get(1).unwrap_or(&none);
+            //     println!("Expect: {} in {:?}", self.token(), parent);
+            // }
             self.next()?;
             Ok(())
         } else {
@@ -324,7 +341,7 @@ impl TokenCursor {
         }
     }
 
-    pub fn semi(&mut self) -> Result<(), ParserError>{
+    pub fn semi(&mut self) -> Result<(), ParserError> {
         self.optional_expect(Token::Semicolon)?;
         Ok(())
     }
@@ -335,6 +352,34 @@ impl TokenCursor {
         let source = self.stream.source();
 
         return source.contains_newline(ByteSpan::from(start, end));
+    }
+
+    pub fn match_keyword(&self, keyword: &str) -> bool {
+        if let Token::Id(name) = self.token() {
+            if keyword == name {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn match_token(&self, tk: Token) -> bool {
+        self.token() == &tk
+    }
+
+    pub fn match_id(&self) -> bool {
+        if let Token::Id(_) = self.token() {
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn eof(&self) -> bool {
+        self.match_token(Token::EOF)
     }
 
     pub fn optional_expect_keyword(&mut self, keyword: &str) -> Result<bool, ParserError> {

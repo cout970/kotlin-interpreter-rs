@@ -229,7 +229,7 @@ impl Display for Token {
             Token::DoubleExclamationMark => { write!(f, "!!")?; }
             Token::NotEquals => { write!(f, "!=")?; }
             Token::NotDoubleEquals => { write!(f, "!==")?; }
-            Token::LeftArrow => { write!(f, "->")?; }
+            Token::RightArrow => { write!(f, "->")?; }
             Token::Elvis => { write!(f, "?:")?; }
             Token::Plus => { write!(f, "+")?; }
             Token::DoublePlus => { write!(f, "++")?; }

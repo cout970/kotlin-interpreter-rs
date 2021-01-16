@@ -20,9 +20,9 @@ pub mod source;
 pub mod source_cursor;
 pub mod token;
 pub mod token_stream;
-
 pub mod parser;
-pub mod analyzer;
+
+// pub mod analyzer;
 pub mod errors;
 
 mod utils;
@@ -75,7 +75,6 @@ mod tests {
     use crate::parser::Parser;
 
     use super::*;
-    use crate::analyzer::tree_to_ast::file_to_ast;
 
     fn get_all_source_files(path: &Path, result: &mut Vec<(String, Source)>) {
         let file = File::open(path);
@@ -116,13 +115,13 @@ mod tests {
         for (path, code) in codes {
             println!("{}: {}", index, path);
 
-            let file = Parser::from(code.clone()).parse_file().expect(&format!("Parsing error at {}", path));
-
-            let (_ast, errors) = file_to_ast(code, &file);
-
-            for x in errors {
-                dbg!(x);
-            }
+            let file = Parser::from(code.clone()).parse().expect(&format!("Parsing error at {}", path));
+            //
+            // let (_ast, errors) = file_to_ast(code, &file);
+            //
+            // for x in errors {
+            //     dbg!(x);
+            // }
 
             index += 1;
         }

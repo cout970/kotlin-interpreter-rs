@@ -400,7 +400,7 @@ impl TokenStream {
                 }
                 b'>' => {
                     self.cursor.next_byte();
-                    Token::LeftArrow
+                    Token::RightArrow
                 }
                 _ => Token::Minus
             },
@@ -877,7 +877,7 @@ mod tests {
             Token::Semicolon, Token::LeftParen, Token::RightParen, Token::LeftBrace, Token::RightBrace,
             Token::LeftBracket, Token::RightBracket, Token::LeftAngleBracket, Token::RightAngleBracket,
             Token::At, Token::Colon, Token::DoubleColon, Token::Dollar, Token::Dot, Token::DoubleDot,
-            Token::Comma, Token::Elvis, Token::QuestionMark, Token::ExclamationMark, Token::LeftArrow,
+            Token::Comma, Token::Elvis, Token::QuestionMark, Token::ExclamationMark, Token::RightArrow,
             Token::DoubleDot, Token::Plus, Token::DoublePlus, Token::Minus, Token::DoubleMinus,
             Token::Asterisk, Token::Slash, Token::Percent, Token::Equals, Token::DoubleEquals,
             Token::TripleEquals, Token::NotEquals, Token::NotDoubleEquals, Token::PlusEquals,
@@ -908,7 +908,7 @@ moveLayoutSplitterLeft.check(e) -> splitter -= 0.03125f\
             Token::LeftParen,
             Token::Id(String::from("e")),
             Token::RightParen,
-            Token::LeftArrow,
+            Token::RightArrow,
             Token::Id(String::from("splitter")),
             Token::MinusEquals,
             Token::Number(Number::Float(0.03125)),

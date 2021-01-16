@@ -34,7 +34,7 @@ pub enum Token {
     DoubleExclamationMark,
     NotEquals,
     NotDoubleEquals,
-    LeftArrow,
+    RightArrow,
     Elvis,
     Plus,
     DoublePlus,

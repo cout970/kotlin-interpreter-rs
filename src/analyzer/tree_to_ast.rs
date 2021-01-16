@@ -85,7 +85,7 @@ pub fn file_to_ast(code: Source, file: &KotlinFile) -> (AstFile, Vec<KtError>) {
     let mut typealias = vec![];
     let mut imports = vec![];
 
-    for import in &file.preamble.imports {
+    for import in &file.imports {
         imports.push(AstImport {
             span: import.span,
             name: import.path.to_owned().join("."),
@@ -533,10 +533,6 @@ fn function_to_ast(ctx: &mut Context, fun: &Function) -> AstFunction {
 
     let mut vararg = false;
     for param in &fun.value_parameters {
-        if param.mutability != ParameterMutability::Default {
-            ctx.new_error(fun.span, AnalyserError::FunctionParameterInvalidMutability)
-        }
-
         if args.iter().any(|it| it.name == param.name) {
             ctx.new_error(fun.span, AnalyserError::DuplicatedFunctionParameter {
                 param: param.name.to_owned()

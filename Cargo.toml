@@ -8,6 +8,11 @@ edition = "2018"
 itertools = "0.8.0"
 lazy_static = "1.2.0"
 rand = "0.6.5"
+backtrace = "0.3.55"
 
 [dev-dependencies]
 pretty_assertions = "*"
+
+[profile.dev]
+#debug = 0
+# add env variable `RUSTFLAGS=-C link-arg=-fuse-ld=lld` for faster compile time

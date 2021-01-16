@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
 use crate::source::ByteSpan;
@@ -7,20 +8,10 @@ pub type Path = Vec<String>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct KotlinFile {
-    pub preamble: Preamble,
-    pub objects: Vec<TopLevelObject>,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct KotlinScript {
-    pub preamble: Preamble
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct Preamble {
     pub file_annotations: Vec<FileAnnotation>,
     pub package_header: Option<PackageHeader>,
     pub imports: Vec<Import>,
+    pub objects: Vec<TopLevelObject>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -50,7 +41,6 @@ pub struct Import {
 #[derive(Clone, PartialEq, Debug)]
 pub struct PackageHeader {
     pub span: ByteSpan,
-    pub modifiers: Vec<Modifier>,
     pub path: Vec<String>,
 }
 
@@ -126,7 +116,7 @@ pub struct Property {
     pub mutable: bool,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
-    pub declarations: Vec<VariableDeclarationEntry>,
+    pub declarations: Vec<VariableName>,
     pub type_constraints: Vec<TypeConstraint>,
     pub initialization: PropertyInitialization,
     pub getter: Option<PropertyGetter>,
@@ -136,8 +126,8 @@ pub struct Property {
 #[derive(Clone, PartialEq, Debug)]
 pub enum PropertyInitialization {
     None,
-    Expr(ExprVal),
-    Delegation(ExprVal),
+    Expr(Expression),
+    Delegation(Expression),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -158,45 +148,58 @@ pub struct PropertySetter {
     pub body: Option<FunctionBody>,
 }
 
-pub type ExprVal = (ByteSpan, Expr);
 pub type ExprRef = Arc<(ByteSpan, Expr)>;
 pub type Block = (ByteSpan, Vec<Statement>);
 
+#[derive(Clone, PartialEq)]
+pub struct Expression {
+    pub span: ByteSpan,
+    pub kind: Expr,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct FunctionBlock {
+    pub span: ByteSpan,
+    pub statements: Vec<Statement>,
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
-    Chain {
-        operands: Vec<ExprVal>,
-        operators: Vec<String>,
+    Null,
+    Tree {
+        left: Box<Expression>,
+        right: Box<Expression>,
+        operator: String,
     },
     InfixFun {
-        parameters: Vec<ExprVal>,
+        parameters: Vec<Expression>,
         functions: Vec<String>,
     },
     Prefix {
-        prefix: Vec<String>,
-        expr: ExprRef,
+        unary_operators: Vec<String>,
+        expr: Box<Expression>,
     },
     Postfix {
-        expr: ExprRef,
+        expr: Box<Expression>,
         postfix: Vec<ExprPostfix>,
     },
     Is {
-        expr: ExprRef,
+        expr: Box<Expression>,
         ty: Type,
     },
     String(Vec<StringComponent>),
     If {
-        cond: ExprRef,
-        if_true: Block,
-        if_false: Option<Block>,
+        cond: Box<Expression>,
+        if_true: Box<FunctionBody>,
+        if_false: Option<Box<FunctionBody>>,
     },
     Try {
-        block: Block,
+        block: Box<FunctionBody>,
         catch_blocks: Vec<CatchBlock>,
-        finally: Option<Block>,
+        finally: Option<Box<FunctionBody>>,
     },
     When {
-        expr: Option<ExprRef>,
+        expr: Option<Box<Expression>>,
         entries: Vec<WhenEntry>,
     },
     Object {
@@ -213,11 +216,10 @@ pub enum Expr {
     Boolean(bool),
     Char(char),
     Number(Number),
-    Null,
     This,
     Super,
-    Throw(ExprRef),
-    Return(Option<ExprRef>),
+    Throw(Box<Expression>),
+    Return(Option<Box<Expression>>),
     Continue,
     Break,
 }
@@ -225,30 +227,30 @@ pub enum Expr {
 #[derive(Clone, PartialEq, Debug)]
 pub struct WhenEntry {
     pub conditions: Vec<WhenCondition>,
-    pub body: Block,
+    pub body: FunctionBody,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum WhenCondition {
     Else,
-    Expr(ExprVal),
-    In { negated: bool, expr: ExprVal },
-    Is { negated: bool, ty: Type },
+    Expr(Expression),
+    In { negated: bool, expr: Expression },
+    Is { negated: bool, is_type: Type },
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum StringComponent {
     Content(String),
     Variable(String),
-    Template(ExprVal),
+    Template(Expression),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CatchBlock {
     pub annotations: Vec<Annotation>,
-    pub name: String,
-    pub ty: Vec<SimpleUserType>,
-    pub block: Block,
+    pub variable: String,
+    pub exception_type: Type,
+    pub block: FunctionBody,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -256,15 +258,9 @@ pub enum ExprPostfix {
     Increment,
     Decrement,
     AssertNonNull,
-    ArrayAccess(Vec<ExprVal>),
+    ArrayAccess(Vec<Expression>),
     FunCall(CallSuffix),
     MemberAccess { operator: String, member: String },
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct VariableDeclarationEntry {
-    pub name: String,
-    pub declared_type: Option<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -273,7 +269,6 @@ pub struct Function {
     pub modifiers: Vec<Modifier>,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
-    pub type_parameters2: Vec<TypeParameter>,
     pub name: String,
     pub value_parameters: Vec<FunctionParameter>,
     pub return_type: Option<Type>,
@@ -283,41 +278,73 @@ pub struct Function {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FunctionBody {
-    Block(Block),
-    Expression(ExprVal),
+    Block(FunctionBlock),
+    Expression(Expression),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Statement {
-    Expression(ExprVal),
-    Assignment(ExprVal, String, ExprVal),
-    Declaration(Declaration),
-    For {
-        span: ByteSpan,
-        annotations: Vec<Annotation>,
-        variables: Vec<VariableDeclarationEntry>,
-        expr: ExprRef,
-        body: Block,
+    Expression(Expression),
+    Assignment {
+        left: Expression,
+        right: Expression,
+        operator: String,
     },
-    While {
-        span: ByteSpan,
-        expr: ExprRef,
-        body: Block,
-    },
-    DoWhile {
-        span: ByteSpan,
-        expr: ExprRef,
-        body: Block,
-    },
+    Class(Class),
+    Function(Function),
+    Variable(Variable),
+    For(ForStatement),
+    While(WhileStatement),
+    DoWhile(DoWhileStatement),
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum Declaration {
-    Class(Class),
-    Object(Object),
-    Function(Function),
-    Property(Property),
-    TypeAlias(TypeAlias),
+pub struct Variable {
+    pub span: ByteSpan,
+    pub mutable: bool,
+    pub variable: VariablePattern,
+    pub initialization: PropertyInitialization,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct ForStatement {
+    pub span: ByteSpan,
+    pub annotations: Vec<Annotation>,
+    pub variable: VariablePattern,
+    pub iterable: Expression,
+    pub body: FunctionBody,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub enum VariablePattern {
+    Single(VariableName),
+    Tuple(Vec<VariableName>),
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct VariableName {
+    pub name: String,
+    pub variable_type: Option<Type>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct WhileStatement {
+    pub span: ByteSpan,
+    pub condition: Expression,
+    pub body: FunctionBody,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct DoWhileStatement {
+    pub span: ByteSpan,
+    pub condition: Expression,
+    pub body: FunctionBody,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct StatementBlock {
+    pub span: ByteSpan,
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -356,17 +383,9 @@ pub struct Parameter {
 #[derive(Clone, PartialEq, Debug)]
 pub struct FunctionParameter {
     pub modifiers: Vec<Modifier>,
-    pub mutability: ParameterMutability,
     pub name: String,
     pub ty: Type,
-    pub default_value: Option<ExprVal>,
-}
-
-#[derive(Clone, PartialEq, Debug)]
-pub enum ParameterMutability {
-    Val,
-    Var,
-    Default,
+    pub default_value: Option<Expression>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -380,22 +399,22 @@ pub struct TypeParameter {
 pub struct Type {
     pub span: ByteSpan,
     pub annotations: Vec<Annotation>,
-    pub reference: Arc<TypeReference>,
+    pub reference: TypeReference,
 }
 
-pub type UserType = Vec<SimpleUserType>;
+pub type UserType = Vec<SimpleType>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeReference {
     Function(FunctionType),
-    UserType(UserType),
-    Nullable(Arc<TypeReference>),
+    UserType(SimpleType),
 }
 
-
 #[derive(Clone, PartialEq, Debug)]
-pub struct SimpleUserType {
+pub struct SimpleType {
+    pub nullable: bool,
     pub name: String,
+    pub package: Vec<String>,
     pub type_params: Vec<CallSiteTypeParams>,
 }
 
@@ -409,9 +428,10 @@ pub enum CallSiteTypeParams {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FunctionType {
+    pub nullable: bool,
     pub receiver: Option<Arc<TypeReference>>,
     pub parameters: Vec<Type>,
-    pub return_type: Arc<TypeReference>,
+    pub return_type: Box<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug, Copy)]
@@ -438,6 +458,7 @@ pub struct Class {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ClassBody {
+    pub span: ByteSpan,
     pub enum_entries: Vec<EnumEntry>,
     pub members: Vec<Member>,
 }
@@ -492,23 +513,22 @@ pub struct PrimaryConstructor {
 #[derive(Clone, PartialEq, Debug)]
 pub enum DelegationSpecifier {
     Type(Type),
-    DelegatedBy(Type, ExprVal),
+    DelegatedBy(Type, Expression),
     FunctionCall(Type, CallSuffix),
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CallSuffix {
     pub span: ByteSpan,
-    pub type_arguments: Vec<CallSiteTypeParams>,
     pub value_arguments: Vec<ValueArgument>,
-    pub annotated_lambda: Option<AnnotatedLambda>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct ValueArgument {
-    pub name: Option<String>,
+    pub span: ByteSpan,
+    pub named: Option<String>,
     pub spread: bool,
-    pub expr: ExprVal,
+    pub expr: Expression,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -519,15 +539,23 @@ pub struct AnnotatedLambda {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct FunctionLiteral {
-    pub parameters: Vec<VariableDeclarationEntry>,
-    pub statements: Vec<Statement>,
+    pub parameters: Vec<VariableName>,
+    pub body: FunctionBlock,
 }
 
 impl KotlinFile {
     pub fn get_package_str(&self) -> String {
-        match self.preamble.package_header.as_ref() {
+        match self.package_header.as_ref() {
             Some(it) => it.path.join("."),
             None => String::new()
         }
+    }
+}
+
+impl Debug for Expression {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        // Omit span and 1 level of indentation
+        write!(f, "Expression::")?;
+        self.kind.fmt(f)
     }
 }

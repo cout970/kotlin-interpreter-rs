@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display, Formatter, Debug};
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -55,7 +55,7 @@ pub struct CharPos {
 
 /// Start and end of a section of the source
 /// Defined by the byte positions
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub struct ByteSpan { start: BytePos, end: BytePos }
 
 /// Start and end of a section of the source
@@ -187,6 +187,12 @@ impl ByteSpan {
             end: source.new_code_ref(self.end).to_char_pos(),
             source,
         }
+    }
+}
+
+impl Debug for ByteSpan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}..{}", self.start.0, self.end.0)
     }
 }
 
