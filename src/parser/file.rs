@@ -502,7 +502,6 @@ fn read_expr_prefix_operation(s: &mut TokenCursor) -> Result<String, KtError> {
 //    : "!"
 //    : annotations
 //    : labelDefinition
-//  ; TODO add annotations and labels
     read_expr_prefix_operator(s)
 }
 

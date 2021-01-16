@@ -346,7 +346,7 @@ impl TokenCursor {
         Ok(())
     }
 
-    pub fn at_newline(&mut self) -> bool {
+    pub fn at_newline(&self) -> bool {
         let start = self.prev_span().end();
         let end = self.span().start();
         let source = self.stream.source();

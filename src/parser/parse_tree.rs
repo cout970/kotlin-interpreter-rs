@@ -116,7 +116,7 @@ pub struct Property {
     pub mutable: bool,
     pub type_parameters: Vec<TypeParameter>,
     pub receiver: Option<Type>,
-    pub declarations: Vec<VariableName>,
+    pub variable: VariableName,
     pub type_constraints: Vec<TypeConstraint>,
     pub initialization: PropertyInitialization,
     pub getter: Option<PropertyGetter>,
@@ -134,7 +134,7 @@ pub enum PropertyInitialization {
 pub struct PropertyGetter {
     pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
-    pub ty: Option<Type>,
+    pub getter_type: Option<Type>,
     pub body: Option<FunctionBody>,
 }
 
@@ -142,10 +142,9 @@ pub struct PropertyGetter {
 pub struct PropertySetter {
     pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
-    pub param_modifiers: Vec<Modifier>,
-    pub param_name: Option<String>,
-    pub param_ty: Option<Type>,
-    pub body: Option<FunctionBody>,
+    pub setter_type: Option<Type>,
+    pub parameter: Option<SetterParameter>,
+    pub body: Option<StatementBlock>,
 }
 
 pub type ExprRef = Arc<(ByteSpan, Expr)>;
@@ -158,7 +157,7 @@ pub struct Expression {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct FunctionBlock {
+pub struct StatementBlock {
     pub span: ByteSpan,
     pub statements: Vec<Statement>,
 }
@@ -171,21 +170,33 @@ pub enum Expr {
         right: Box<Expression>,
         operator: String,
     },
+    FunctionCall {
+        function: Box<Expression>,
+        type_arguments: Vec<Type>,
+        value_arguments: Vec<ValueArgument>,
+        lambda: Option<FunctionLiteral>,
+    },
+    PropertyAccess {
+        object: Box<Expression>,
+        property: String,
+        safe_call: bool
+    },
     InfixFun {
         parameters: Vec<Expression>,
         functions: Vec<String>,
     },
-    Prefix {
+    UnaryOperator {
         unary_operators: Vec<String>,
         expr: Box<Expression>,
     },
-    Postfix {
+    Suffix {
         expr: Box<Expression>,
-        postfix: Vec<ExprPostfix>,
+        suffix: ExprPostfix,
     },
     Is {
         expr: Box<Expression>,
-        ty: Type,
+        is_type: Type,
+        negated: bool
     },
     String(Vec<StringComponent>),
     If {
@@ -278,7 +289,7 @@ pub struct Function {
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FunctionBody {
-    Block(FunctionBlock),
+    Block(StatementBlock),
     Expression(Expression),
 }
 
@@ -342,18 +353,12 @@ pub struct DoWhileStatement {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct StatementBlock {
-    pub span: ByteSpan,
-    pub statements: Vec<Statement>,
-}
-
-#[derive(Clone, PartialEq, Debug)]
 pub struct TypeAlias {
     pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
-    pub ty: Type,
+    pub aliased_type: Type,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -384,8 +389,15 @@ pub struct Parameter {
 pub struct FunctionParameter {
     pub modifiers: Vec<Modifier>,
     pub name: String,
-    pub ty: Type,
+    pub parameter_type: Type,
     pub default_value: Option<Expression>,
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct SetterParameter {
+    pub modifiers: Vec<Modifier>,
+    pub name: String,
+    pub parameter_type: Option<Type>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -532,15 +544,10 @@ pub struct ValueArgument {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct AnnotatedLambda {
-    pub annotations: Vec<Annotation>,
-    pub body: FunctionLiteral,
-}
-
-#[derive(Clone, PartialEq, Debug)]
 pub struct FunctionLiteral {
+    pub annotations: Vec<Annotation>,
     pub parameters: Vec<VariableName>,
-    pub body: FunctionBlock,
+    pub body: StatementBlock,
 }
 
 impl KotlinFile {

@@ -20,6 +20,9 @@ fun test() {
     return
     return 1
 
+    1 is Int
+    1 in 0..10
+
     if(true) {}
     if(true) {} else {}
     try {} catch(e: Exception) {}

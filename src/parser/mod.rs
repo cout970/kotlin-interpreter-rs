@@ -2,7 +2,7 @@ use std::option::Option::Some;
 use std::sync::Arc;
 
 use crate::errors::KtError;
-use crate::parser::parse_tree::{Annotation, Block, CallSiteTypeParams, CallSuffix, CatchBlock, Class, ClassBody, DelegationSpecifier, DoWhileStatement, Expr, Expression, FileAnnotation, ForStatement, Function, FunctionBlock, FunctionBody, FunctionLiteral, FunctionParameter, FunctionType, Import, KotlinFile, Modifier, Object, PackageHeader, Property, PropertyInitialization, SimpleType, Statement, StringComponent, TopLevelObject, Type, TypeAlias, TypeConstraint, TypeParameter, TypeReference, UserType, ValueArgument, Variable, VariableName, VariablePattern, WhenCondition, WhenEntry, WhileStatement};
+use crate::parser::parse_tree::{Annotation, Block, CallSiteTypeParams, CallSuffix, CatchBlock, Class, ClassBody, DelegationSpecifier, DoWhileStatement, Expr, Expression, ExprPostfix, FileAnnotation, ForStatement, Function, FunctionBody, FunctionLiteral, FunctionParameter, FunctionType, Import, KotlinFile, Modifier, Object, PackageHeader, Property, PropertyGetter, PropertyInitialization, PropertySetter, SetterParameter, SimpleType, Statement, StatementBlock, StringComponent, TopLevelObject, Type, TypeAlias, TypeConstraint, TypeParameter, TypeReference, UserType, ValueArgument, Variable, VariableName, VariablePattern, WhenCondition, WhenEntry, WhileStatement};
 use crate::parser::token_cursor::TokenCursor;
 use crate::source::{BytePos, ByteSpan, Source, SourceSpan};
 use crate::source_cursor::SourceCursor;
@@ -16,6 +16,7 @@ pub mod parse_tree;
 pub struct Parser {
     cursor: TokenCursor,
     errors: Vec<ParserError>,
+    parsing_delegated_by: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -35,7 +36,7 @@ pub enum ParserErrorKind {
 
 impl Parser {
     pub fn new(cursor: TokenCursor) -> Self {
-        Self { cursor, errors: vec![] }
+        Self { cursor, errors: vec![], parsing_delegated_by: false }
     }
 
     pub fn from(source: Source) -> Parser {
@@ -206,10 +207,10 @@ impl Parser {
                 self.parse_function(start, modifiers).map(|i| TopLevelObject::Function(i))
             }
             Token::Val => {
-                self.parse_property(start, modifiers, false).map(|i| TopLevelObject::Property(i))
+                self.parse_top_level_property(start, modifiers, false).map(|i| TopLevelObject::Property(i))
             }
             Token::Var => {
-                self.parse_property(start, modifiers, true).map(|i| TopLevelObject::Property(i))
+                self.parse_top_level_property(start, modifiers, true).map(|i| TopLevelObject::Property(i))
             }
             Token::TypeAlias => {
                 self.parse_typealias(start, modifiers).map(|i| TopLevelObject::TypeAlias(i))
@@ -340,7 +341,13 @@ impl Parser {
             } else if self.cursor.match_keyword("by") {
                 // Interface by implementation
                 self.cursor.expect_keyword("by")?;
-                let expr = self.parse_expression()?;
+
+                // Needed to avoid ambiguity with lambda and class body
+                self.parsing_delegated_by = true;
+                let opt_expr = self.parse_expression();
+                self.parsing_delegated_by = false;
+
+                let expr = opt_expr?;
 
                 Ok(DelegationSpecifier::DelegatedBy(
                     Type {
@@ -394,27 +401,12 @@ impl Parser {
         self.cursor.expect(Token::Fun)?;
 
         // Type parameters '<T>' or '<A: B, T, C: List<B>>'
-        let mut type_parameters = vec![];
-
-        if self.cursor.match_token(Token::LeftAngleBracket) {
-            self.cursor.expect(Token::LeftAngleBracket)?;
-
-            loop {
-                type_parameters.push(self.parse_type_parameter()?);
-                if self.cursor.match_token(Token::Comma) {
-                    self.cursor.expect(Token::Comma)?;
-                } else {
-                    break;
-                }
-            }
-
-            self.cursor.expect(Token::RightAngleBracket)?;
-        }
+        let type_parameters = self.parse_type_parameters()?;
 
         // Parse function name or receiver and name
         // name
         // List<Int>.name
-        let (receiver, name) = self.parse_function_name()?;
+        let (receiver, name) = self.parse_receiver_and_name()?;
 
         // Parameters '(a: Int)'
         let mut value_parameters = vec![];
@@ -469,14 +461,8 @@ impl Parser {
         // Function body block or expresion body
         let mut body = None;
 
-        if self.cursor.match_token(Token::Equals) {
-            self.cursor.expect(Token::Equals)?;
-            body = Some(FunctionBody::Expression(self.parse_expression()?));
-            //
-        } else if self.cursor.match_token(Token::LeftBrace) {
-            self.cursor.expect(Token::LeftBrace)?;
-            body = Some(FunctionBody::Block(self.parse_function_body_block()?));
-            self.cursor.expect(Token::RightBrace)?;
+        if self.cursor.match_token(Token::Equals) || self.cursor.match_token(Token::LeftBrace) {
+            body = Some(self.parse_function_body()?);
         }
 
         Ok(Function {
@@ -492,12 +478,191 @@ impl Parser {
         })
     }
 
-    fn parse_property(&mut self, start: BytePos, modifiers: Vec<Modifier>, mutable: bool) -> Result<Property, ParserError> {
-        self.todo()
+    fn parse_top_level_property(&mut self, start: BytePos, modifiers: Vec<Modifier>, mutable: bool) -> Result<Property, ParserError> {
+        let start = self.cursor.start();
+
+        if mutable {
+            self.cursor.expect(Token::Var)?;
+        } else {
+            self.cursor.expect(Token::Val)?;
+        }
+
+        let type_parameters = self.parse_type_parameters()?;
+
+        let (receiver, name) = self.parse_receiver_and_name()?;
+        let mut variable_type = None;
+
+        if self.cursor.match_token(Token::Colon) {
+            self.cursor.expect(Token::Colon)?;
+            variable_type = Some(self.parse_type()?);
+        }
+
+        let variable = VariableName { name, variable_type };
+        let mut type_constraints = vec![];
+
+        if self.cursor.match_keyword("where") {
+            self.cursor.expect_keyword("where")?;
+
+            loop {
+                type_constraints.push(self.parse_type_constraint()?);
+                if self.cursor.match_token(Token::Comma) {
+                    self.cursor.expect(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        let mut initialization = PropertyInitialization::None;
+
+        if self.cursor.match_token(Token::Equals) {
+            self.cursor.expect(Token::Equals)?;
+
+            initialization = PropertyInitialization::Expr(self.parse_expression()?);
+        } else if self.cursor.match_keyword("by") {
+            self.cursor.expect_keyword("by")?;
+
+            initialization = PropertyInitialization::Delegation(self.parse_expression()?);
+        }
+
+        let mut getter = None;
+        let mut setter = None;
+
+        let mut prop_modifiers = self.parse_property_modifiers()?;
+
+        if self.cursor.match_keyword("get") {
+            getter = Some(self.parse_property_getter(prop_modifiers)?);
+
+            prop_modifiers = self.parse_property_modifiers()?;
+
+            if self.cursor.match_keyword("set") {
+                setter = Some(self.parse_property_setter(prop_modifiers)?);
+            }
+        } else if self.cursor.match_keyword("set") {
+            setter = Some(self.parse_property_setter(prop_modifiers)?);
+
+            prop_modifiers = self.parse_property_modifiers()?;
+
+            if self.cursor.match_keyword("get") {
+                getter = Some(self.parse_property_getter(prop_modifiers)?);
+            }
+        }
+
+        Ok(Property {
+            span: self.cursor.make_span(start),
+            modifiers,
+            mutable,
+            type_parameters,
+            receiver,
+            variable,
+            type_constraints,
+            initialization,
+            getter,
+            setter,
+        })
+    }
+
+    fn parse_property_getter(&mut self, modifiers: Vec<Modifier>) -> Result<PropertyGetter, ParserError> {
+        let start = self.cursor.start();
+        self.cursor.expect_keyword("get")?;
+
+        let mut getter_type = None;
+        let mut body = None;
+
+        if self.cursor.match_token(Token::LeftParen) {
+            self.cursor.expect(Token::LeftParen)?;
+            self.cursor.expect(Token::RightParen)?;
+
+            if self.cursor.match_token(Token::Colon) {
+                self.cursor.expect(Token::Colon)?;
+
+                getter_type = Some(self.parse_type()?);
+            }
+
+            body = Some(self.parse_function_body()?);
+        }
+
+        Ok(PropertyGetter {
+            span: self.cursor.make_span(start),
+            modifiers,
+            getter_type,
+            body,
+        })
+    }
+
+    fn parse_property_setter(&mut self, modifiers: Vec<Modifier>) -> Result<PropertySetter, ParserError> {
+        let start = self.cursor.start();
+        self.cursor.expect_keyword("set")?;
+
+        let mut setter_type = None;
+        let mut parameter = None;
+        let mut body = None;
+
+        if self.cursor.match_token(Token::LeftParen) {
+            // (value: Int)
+            self.cursor.expect(Token::LeftParen)?;
+            parameter = Some(self.parse_setter_parameter()?);
+            self.cursor.expect(Token::RightParen)?;
+
+            if self.cursor.match_token(Token::Colon) {
+                self.cursor.expect(Token::Colon)?;
+
+                setter_type = Some(self.parse_type()?);
+            }
+
+            self.cursor.expect(Token::LeftBrace)?;
+            body = Some(self.parse_block_statements()?);
+            self.cursor.expect(Token::RightBrace)?;
+        }
+
+        Ok(PropertySetter {
+            span: self.cursor.make_span(start),
+            modifiers,
+            setter_type,
+            parameter,
+            body,
+        })
     }
 
     fn parse_typealias(&mut self, start: BytePos, modifiers: Vec<Modifier>) -> Result<TypeAlias, ParserError> {
-        self.todo()
+        let start = self.cursor.start();
+
+        self.cursor.expect(Token::TypeAlias)?;
+        let name = self.cursor.expect_id()?;
+
+        let type_parameters = self.parse_type_parameters()?;
+
+        self.cursor.expect(Token::Equals)?;
+
+        let aliased_type = self.parse_type()?;
+
+        Ok(TypeAlias {
+            span: self.cursor.make_span(start),
+            modifiers,
+            name,
+            type_parameters,
+            aliased_type,
+        })
+    }
+
+    fn parse_type_parameters(&mut self) -> Result<Vec<TypeParameter>, ParserError> {
+        let mut type_parameters = vec![];
+
+        if self.cursor.match_token(Token::LeftAngleBracket) {
+            self.cursor.expect(Token::LeftAngleBracket)?;
+            loop {
+                type_parameters.push(self.parse_type_parameter()?);
+
+                if self.cursor.match_token(Token::Comma) {
+                    self.cursor.expect(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            self.cursor.expect(Token::RightAngleBracket)?;
+        }
+
+        Ok(type_parameters)
     }
 
     fn parse_type_parameter(&mut self) -> Result<TypeParameter, ParserError> {
@@ -657,7 +822,7 @@ impl Parser {
         })
     }
 
-    fn parse_function_name(&mut self) -> Result<(Option<Type>, String), ParserError> {
+    fn parse_receiver_and_name(&mut self) -> Result<(Option<Type>, String), ParserError> {
         let start = self.cursor.start();
 
         // Receiver in parens (Int).sum or (()->Unit).sum
@@ -763,7 +928,7 @@ impl Parser {
 
         self.cursor.expect(Token::Colon)?;
 
-        let ty = self.parse_type()?;
+        let parameter_type = self.parse_type()?;
 
         let mut default_value = None;
 
@@ -771,7 +936,22 @@ impl Parser {
             default_value = Some(self.parse_expression()?);
         }
 
-        Ok(FunctionParameter { modifiers, name, ty, default_value })
+        Ok(FunctionParameter { modifiers, name, parameter_type, default_value })
+    }
+
+    fn parse_setter_parameter(&mut self) -> Result<SetterParameter, ParserError> {
+        let start = self.cursor.start();
+        let modifiers = self.parse_function_parameter_modifiers()?;
+        let name = self.cursor.expect_id()?;
+        let mut parameter_type = None;
+
+        if self.cursor.match_token(Token::Colon) {
+            self.cursor.expect(Token::Colon)?;
+
+            parameter_type = Some(self.parse_type()?);
+        }
+
+        Ok(SetterParameter { modifiers, name, parameter_type })
     }
 
     fn parse_type_parameter_modifiers(&mut self) -> Result<Vec<Modifier>, ParserError> {
@@ -782,6 +962,28 @@ impl Parser {
                 Token::In => Modifier::In,
                 Token::Id(id) if id == "out" => Modifier::Out,
                 Token::Id(id) if id == "reified" => Modifier::Reified,
+                _ => {
+                    break;
+                }
+            };
+
+            self.cursor.next()?;
+            vec.push(modifier);
+        }
+
+        Ok(vec)
+    }
+
+    fn parse_property_modifiers(&mut self) -> Result<Vec<Modifier>, ParserError> {
+        let mut vec = vec![];
+
+        loop {
+            let modifier = match self.cursor.token() {
+                Token::Id(id) if id == "public" => Modifier::Public,
+                Token::Id(id) if id == "private" => Modifier::Private,
+                Token::Id(id) if id == "protected" => Modifier::Protected,
+                Token::Id(id) if id == "internal" => Modifier::Internal,
+                Token::Id(id) if id == "inline" => Modifier::Inline,
                 _ => {
                     break;
                 }
@@ -856,7 +1058,7 @@ impl Parser {
     }
 
     fn parse_expr_comparison(&mut self) -> Result<Expression, ParserError> {
-        self.parse_chain_same_line(Self::parse_expr_is_in, |tk| {
+        self.parse_chain_same_line(Self::parse_expr_in, |tk| {
             match tk {
                 Token::LeftAngleBracket => Some("<".to_string()),
                 Token::LessEquals => Some("<=".to_string()),
@@ -867,16 +1069,38 @@ impl Parser {
         }, true)
     }
 
-    fn parse_expr_is_in(&mut self) -> Result<Expression, ParserError> {
-        // TODO 'is' operator
-
-        self.parse_chain_same_line(Self::parse_expr_elvis, |tk| {
+    fn parse_expr_in(&mut self) -> Result<Expression, ParserError> {
+        self.parse_chain_same_line(Self::parse_expr_is, |tk| {
             match tk {
                 Token::In => Some("in".to_string()),
                 Token::NotIn => Some("!in".to_string()),
                 _ => None
             }
         }, true)
+    }
+
+    fn parse_expr_is(&mut self) -> Result<Expression, ParserError> {
+        let start = self.cursor.start();
+        let expr = self.parse_expr_elvis()?;
+
+        if self.cursor.match_token(Token::Is) ||
+            self.cursor.match_token(Token::NotIs)
+        {
+            let negated = self.cursor.match_token(Token::NotIs);
+            self.cursor.next()?;
+            let is_type = self.parse_type()?;
+
+            return Ok(Expression {
+                span: self.cursor.make_span(start),
+                kind: Expr::Is {
+                    expr: Box::new(expr),
+                    is_type,
+                    negated,
+                },
+            });
+        }
+
+        Ok(expr)
     }
 
     fn parse_expr_elvis(&mut self) -> Result<Expression, ParserError> {
@@ -955,7 +1179,7 @@ impl Parser {
             unary_operators.push(op.to_string());
         }
 
-        let expr = self.parse_expr_postfix_unary()?;
+        let expr = self.parse_expr_with_suffix()?;
 
         if unary_operators.is_empty() {
             return Ok(expr);
@@ -963,20 +1187,162 @@ impl Parser {
 
         Ok(Expression {
             span: self.cursor.make_span(start),
-            kind: Expr::Prefix {
+            kind: Expr::UnaryOperator {
                 unary_operators,
                 expr: Box::new(expr),
             },
         })
     }
 
-    fn parse_expr_postfix_unary(&mut self) -> Result<Expression, ParserError> {
-        let exp = self.parse_expr_primary()?;
-        // Some options allow newline others don't allow that
-        if !self.cursor.at_newline() {
-            // TODO postfixUnarySuffix
+    fn parse_expr_with_suffix(&mut self) -> Result<Expression, ParserError> {
+        let expr = self.parse_expr_primary()?;
+        self.parse_suffix_of_expr(expr)
+    }
+
+    fn parse_suffix_of_expr(&mut self, mut expr: Expression) -> Result<Expression, ParserError> {
+        loop {
+            let suffix = match self.cursor.token() {
+                Token::DoublePlus if !self.cursor.at_newline() => {
+                    self.cursor.expect(Token::DoublePlus)?;
+                    ExprPostfix::Increment
+                }
+                Token::DoubleMinus if !self.cursor.at_newline() => {
+                    self.cursor.expect(Token::DoubleMinus)?;
+                    ExprPostfix::Decrement
+                }
+                Token::DoubleExclamationMark if !self.cursor.at_newline() => {
+                    self.cursor.expect(Token::DoubleExclamationMark)?;
+                    ExprPostfix::AssertNonNull
+                }
+                Token::LeftParen | Token::LeftAngleBracket  if !self.cursor.at_newline() => {
+                    return self.parse_function_call_suffix(expr);
+                }
+                Token::LeftBrace if !self.cursor.at_newline() && !self.parsing_delegated_by => {
+                    return self.parse_function_call_suffix(expr);
+                }
+                Token::Dot => {
+                    return self.parse_method_suffix(expr);
+                }
+                Token::LeftBracket => {
+                    let mut indices = vec![];
+                    self.cursor.expect(Token::LeftBracket)?;
+                    loop {
+                        indices.push(self.parse_expression()?);
+                        if self.cursor.match_token(Token::Comma) {
+                            self.cursor.expect(Token::Comma)?;
+                        } else {
+                            break;
+                        }
+                    }
+                    self.cursor.expect(Token::RightBracket)?;
+                    ExprPostfix::ArrayAccess(indices)
+                }
+                Token::QuestionMark if self.cursor.offset_token(1) == &Token::Dot => {
+                    return self.parse_method_suffix(expr);
+                }
+                _ => {
+                    return Ok(expr);
+                }
+            };
+
+            expr = Expression {
+                span: self.cursor.make_span(expr.span.start()),
+                kind: Expr::Suffix {
+                    expr: Box::new(expr),
+                    suffix,
+                },
+            };
         }
-        Ok(exp)
+    }
+
+    fn parse_function_call_suffix(&mut self, prev: Expression) -> Result<Expression, ParserError> {
+        let mut type_arguments = vec![];
+
+        // <T>
+        if self.cursor.match_token(Token::LeftAngleBracket) {
+            self.cursor.expect(Token::LeftAngleBracket)?;
+            loop {
+                type_arguments.push(self.parse_type()?);
+                if self.cursor.match_token(Token::Comma) {
+                    self.cursor.expect(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            self.cursor.expect(Token::RightAngleBracket)?;
+        }
+
+        let mut value_arguments = vec![];
+        let mut lambda = None;
+
+        if self.cursor.match_token(Token::LeftParen) {
+            // ()
+            self.cursor.expect(Token::LeftParen)?;
+
+            while !self.cursor.match_token(Token::RightParen) {
+                value_arguments.push(self.parse_value_argument()?);
+
+                if self.cursor.match_token(Token::Comma) {
+                    self.cursor.expect(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            self.cursor.expect(Token::RightParen)?;
+
+            // {}
+            if !self.parsing_delegated_by &&
+                self.cursor.match_token(Token::LeftBrace)
+            {
+                lambda = Some(self.parse_function_literal()?);
+            }
+        } else {
+            // {}
+            if !self.parsing_delegated_by {
+                lambda = Some(self.parse_function_literal()?);
+            }
+        }
+
+        let expr = Expression {
+            span: self.cursor.make_span(prev.span.start()),
+            kind: Expr::FunctionCall {
+                function: Box::new(prev),
+                type_arguments,
+                value_arguments,
+                lambda,
+            },
+        };
+
+        self.parse_suffix_of_expr(expr)
+    }
+
+    fn parse_method_suffix(&mut self, prev: Expression) -> Result<Expression, ParserError> {
+        let start = self.cursor.start();
+        let mut safe_call = false;
+
+        // ?.value
+        if self.cursor.match_token(Token::QuestionMark) {
+            self.cursor.expect(Token::QuestionMark)?;
+            safe_call = true;
+        }
+        // .value
+        self.cursor.expect(Token::Dot)?;
+        let name = self.cursor.expect_id()?;
+
+        let mut expr = Expression {
+            span: self.cursor.make_span(start),
+            kind: Expr::PropertyAccess {
+                object: Box::new(prev),
+                property: name,
+                safe_call,
+            },
+        };
+
+        if self.cursor.match_token(Token::LeftAngleBracket) || self.cursor.match_token(Token::LeftParen) || self.cursor.match_token(Token::LeftBrace) {
+            expr = self.parse_function_call_suffix(expr)?;
+        }
+
+        Ok(expr)
     }
 
     fn parse_expr_primary(&mut self) -> Result<Expression, ParserError> {
@@ -989,7 +1355,7 @@ impl Parser {
                 self.cursor.expect(Token::RightParen)?;
                 Ok(e)
             }
-            Token::LeftBrace => self.parse_expr_function_literal(),
+            Token::LeftBrace => self.parse_expr_lambda(),
             Token::Id(name) => {
                 self.cursor.next()?;
                 Ok(Expression {
@@ -1211,15 +1577,25 @@ impl Parser {
         })
     }
 
-    fn parse_expr_function_literal(&mut self) -> Result<Expression, ParserError> {
+    fn parse_expr_lambda(&mut self) -> Result<Expression, ParserError> {
         let start = self.cursor.start();
+        let literal = self.parse_function_literal()?;
+
+        Ok(Expression {
+            span: self.cursor.make_span(start),
+            kind: Expr::Lambda(literal),
+        })
+    }
+
+    fn parse_function_literal(&mut self) -> Result<FunctionLiteral, ParserError> {
         let mut parameters = vec![];
 
         self.cursor.expect(Token::LeftBrace)?;
 
-        if self.cursor.offset_token(1) == &Token::Colon
-            || self.cursor.offset_token(1) == &Token::Comma
-            || self.cursor.offset_token(1) == &Token::RightArrow
+        if !self.cursor.match_token(Token::RightBrace) && (
+            self.cursor.offset_token(1) == &Token::Colon
+                || self.cursor.offset_token(1) == &Token::Comma
+                || self.cursor.offset_token(1) == &Token::RightArrow)
         {
             loop {
                 let var = self.parse_variable_name()?;
@@ -1236,16 +1612,14 @@ impl Parser {
             self.cursor.expect(Token::RightArrow)?;
         }
 
-        let body = self.parse_function_body_block()?;
+        let body = self.parse_block_statements()?;
 
         self.cursor.expect(Token::RightBrace)?;
 
-        Ok(Expression {
-            span: self.cursor.make_span(start),
-            kind: Expr::Lambda(FunctionLiteral {
-                parameters,
-                body,
-            }),
+        Ok(FunctionLiteral {
+            annotations: vec![],
+            parameters,
+            body,
         })
     }
 
@@ -1256,12 +1630,12 @@ impl Parser {
         self.cursor.expect(Token::LeftParen)?;
         let cond = self.parse_expression()?;
         self.cursor.expect(Token::RightParen)?;
-        let if_true = self.parse_statement_block()?;
+        let if_true = self.parse_statement_body()?;
         let mut if_false = None;
 
         if self.cursor.match_token(Token::Else) {
             self.cursor.expect(Token::Else)?;
-            if_false = Some(self.parse_statement_block()?);
+            if_false = Some(self.parse_statement_body()?);
         }
 
         Ok(Expression {
@@ -1278,7 +1652,7 @@ impl Parser {
         let start = self.cursor.start();
 
         self.cursor.expect(Token::Try)?;
-        let block = self.parse_statement_block()?;
+        let block = self.parse_statement_body()?;
 
         let mut catch_blocks = vec![];
 
@@ -1289,7 +1663,7 @@ impl Parser {
             self.cursor.expect(Token::Colon)?;
             let exception_type = self.parse_type()?;
             self.cursor.expect(Token::RightParen)?;
-            let catch = self.parse_statement_block()?;
+            let catch = self.parse_statement_body()?;
 
             catch_blocks.push(CatchBlock {
                 annotations: vec![],
@@ -1307,7 +1681,7 @@ impl Parser {
 
         if self.cursor.match_keyword("finally") {
             self.cursor.expect_keyword("finally")?;
-            finally = Some(self.parse_statement_block()?);
+            finally = Some(self.parse_statement_body()?);
         }
 
         Ok(Expression {
@@ -1388,7 +1762,7 @@ impl Parser {
 
         self.cursor.expect(Token::RightArrow)?;
 
-        let body = self.parse_statement_block()?;
+        let body = self.parse_statement_body()?;
 
         Ok(WhenEntry {
             conditions,
@@ -1519,7 +1893,7 @@ impl Parser {
         tree
     }
 
-    fn parse_function_body_block(&mut self) -> Result<FunctionBlock, ParserError> {
+    fn parse_block_statements(&mut self) -> Result<StatementBlock, ParserError> {
         let start = self.cursor.start();
         let mut statements = vec![];
 
@@ -1540,7 +1914,7 @@ impl Parser {
             }
         }
 
-        Ok(FunctionBlock {
+        Ok(StatementBlock {
             span: self.cursor.make_span(start),
             statements,
         })
@@ -1661,7 +2035,7 @@ impl Parser {
         let iterable = self.parse_expression()?;
         self.cursor.expect(Token::RightParen)?;
 
-        let body = self.parse_statement_block()?;
+        let body = self.parse_statement_body()?;
 
         Ok(ForStatement {
             span: self.cursor.make_span(start),
@@ -1681,7 +2055,7 @@ impl Parser {
         let condition = self.parse_expression()?;
         self.cursor.expect(Token::RightParen)?;
 
-        let body = self.parse_statement_block()?;
+        let body = self.parse_statement_body()?;
 
         Ok(WhileStatement {
             span: self.cursor.make_span(start),
@@ -1695,7 +2069,7 @@ impl Parser {
 
         // do { } while(cond)
         self.cursor.expect(Token::Do)?;
-        let body = self.parse_statement_block()?;
+        let body = self.parse_statement_body()?;
         self.cursor.expect(Token::While)?;
         self.cursor.expect(Token::LeftParen)?;
         let condition = self.parse_expression()?;
@@ -1708,16 +2082,28 @@ impl Parser {
         })
     }
 
-    fn parse_statement_block(&mut self) -> Result<FunctionBody, ParserError> {
+    fn parse_statement_body(&mut self) -> Result<FunctionBody, ParserError> {
         if self.cursor.match_token(Token::LeftBrace) {
             self.cursor.expect(Token::LeftBrace)?;
-            // Temp, name or function, one of them need to change
-            let block = self.parse_function_body_block()?;
+            let block = self.parse_block_statements()?;
             self.cursor.expect(Token::RightBrace)?;
 
             Ok(FunctionBody::Block(block))
         } else {
             Ok(FunctionBody::Expression(self.parse_expression()?))
+        }
+    }
+
+    fn parse_function_body(&mut self) -> Result<FunctionBody, ParserError> {
+        if self.cursor.match_token(Token::Equals) {
+            self.cursor.expect(Token::Equals)?;
+            Ok(FunctionBody::Expression(self.parse_expression()?))
+        } else {
+            self.cursor.expect(Token::LeftBrace)?;
+            let block = self.parse_block_statements()?;
+            self.cursor.expect(Token::RightBrace)?;
+
+            Ok(FunctionBody::Block(block))
         }
     }
 
@@ -1767,60 +2153,8 @@ mod tests {
         });
     }
 
-    #[test]
-    fn file3() {
-        let src = Source::from_file("./examples/tests/test_file_3.kt").expect("Unable to read file");
-
-        match Parser::from(src).parse() {
-            Ok(file) => {
-                println!("{:#?}", file);
-            }
-            Err(e) => {
-                for error in e {
-                    println!("{}", error);
-                }
-                panic!("Parser returned errors")
-            }
-        }
-    }
-
-    #[test]
-    fn file4() {
-        let src = Source::from_file("./examples/tests/test_file_4.kt").expect("Unable to read file");
-
-        match Parser::from(src).parse() {
-            Ok(file) => {
-                println!("{:#?}", file);
-            }
-            Err(e) => {
-                for error in e {
-                    println!("{}", error);
-                }
-                panic!("Parser returned errors")
-            }
-        }
-    }
-
-    #[test]
-    fn file5() {
-        let src = Source::from_file("./examples/tests/test_file_5.kt").expect("Unable to read file");
-
-        match Parser::from(src).parse() {
-            Ok(file) => {
-                println!("{:#?}", file);
-            }
-            Err(e) => {
-                for error in e {
-                    println!("{}", error);
-                }
-                panic!("Parser returned errors")
-            }
-        }
-    }
-
-    #[test]
-    fn file6() {
-        let src = Source::from_file("./examples/tests/test_file_6.kt").expect("Unable to read file");
+    fn parse_function(path: &str) {
+        let src = Source::from_file(path).expect("Unable to read file");
 
         match Parser::from(src).parse() {
             Ok(file) => {
@@ -1833,5 +2167,51 @@ mod tests {
                 panic!("Parser returned errors")
             }
         }
+    }
+
+    fn parse_file(path: &str) {
+        let src = Source::from_file(path).expect("Unable to read file");
+
+        match Parser::from(src).parse() {
+            Ok(file) => {
+                println!("{:#?}", file);
+            }
+            Err(e) => {
+                for error in e {
+                    println!("{}", error);
+                }
+                panic!("Parser returned errors")
+            }
+        }
+    }
+
+    #[test]
+    fn file3() {
+        parse_file("./examples/tests/test_file_3.kt");
+    }
+
+    #[test]
+    fn file4() {
+        parse_function("./examples/tests/test_file_4.kt");
+    }
+
+    #[test]
+    fn file5() {
+        parse_function("./examples/tests/test_file_5.kt");
+    }
+
+    #[test]
+    fn file6() {
+        parse_function("./examples/tests/test_file_6.kt");
+    }
+
+    #[test]
+    fn file7() {
+        parse_function("./examples/tests/test_file_7.kt");
+    }
+
+    #[test]
+    fn file8() {
+        parse_file("./examples/tests/test_file_8.kt");
     }
 }
