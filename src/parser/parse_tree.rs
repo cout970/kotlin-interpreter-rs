@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::sync::Arc;
 
 use crate::source::ByteSpan;
@@ -179,11 +179,7 @@ pub enum Expr {
     PropertyAccess {
         object: Box<Expression>,
         property: String,
-        safe_call: bool
-    },
-    InfixFun {
-        parameters: Vec<Expression>,
-        functions: Vec<String>,
+        safe_call: bool,
     },
     UnaryOperator {
         unary_operators: Vec<String>,
@@ -191,12 +187,12 @@ pub enum Expr {
     },
     Suffix {
         expr: Box<Expression>,
-        suffix: ExprPostfix,
+        suffix: ExprSuffix,
     },
     Is {
         expr: Box<Expression>,
         is_type: Type,
-        negated: bool
+        negated: bool,
     },
     String(Vec<StringComponent>),
     If {
@@ -217,10 +213,9 @@ pub enum Expr {
         delegation_specifiers: Vec<DelegationSpecifier>,
         body: ClassBody,
     },
-    CallableRef {
+    ExprCallableRef {
+        receiver_expr: Option<Box<Expression>>,
         name: String,
-        ty: UserType,
-        type_arguments: Vec<CallSiteTypeParams>,
     },
     Lambda(FunctionLiteral),
     Ref(String),
@@ -265,7 +260,7 @@ pub struct CatchBlock {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum ExprPostfix {
+pub enum ExprSuffix {
     Increment,
     Decrement,
     AssertNonNull,
@@ -419,7 +414,7 @@ pub type UserType = Vec<SimpleType>;
 #[derive(Clone, PartialEq, Debug)]
 pub enum TypeReference {
     Function(FunctionType),
-    UserType(SimpleType),
+    SimpleType(SimpleType),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -446,24 +441,15 @@ pub struct FunctionType {
     pub return_type: Box<Type>,
 }
 
-#[derive(Clone, PartialEq, Debug, Copy)]
-pub enum ClassType {
-    Class,
-    Interface,
-    Enum,
-    Annotation,
-}
-
 #[derive(Clone, PartialEq, Debug)]
 pub struct Class {
     pub span: ByteSpan,
+    pub annotations: Vec<Annotation>,
     pub modifiers: Vec<Modifier>,
-    pub class_type: ClassType,
     pub name: String,
     pub type_parameters: Vec<TypeParameter>,
     pub primary_constructor: Option<PrimaryConstructor>,
-    pub annotations: Vec<Annotation>,
-    pub delegations: Vec<DelegationSpecifier>,
+    pub delegation_specifiers: Vec<DelegationSpecifier>,
     pub type_constraints: Vec<TypeConstraint>,
     pub body: Option<ClassBody>,
 }
@@ -518,8 +504,9 @@ pub enum DelegationCall {
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct PrimaryConstructor {
+    pub span: ByteSpan,
     pub modifiers: Vec<Modifier>,
-    pub params: Vec<FunctionParameter>,
+    pub value_parameters: Vec<FunctionParameter>,
 }
 
 #[derive(Clone, PartialEq, Debug)]

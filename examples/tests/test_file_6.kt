@@ -7,7 +7,9 @@ fun test() {
         is Int -> "is int"
         !is Int -> "not is int"
         1 + 2  -> "is 3"
-        else -> "else"
+        else -> {
+          "else"
+        }
     }
 
     when {
