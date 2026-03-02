@@ -2,8 +2,7 @@
 Small Kotlin interpreter made in Rust
 
 ### Current state of the project: 
-The project is inactive for now, maybe in the future a will make another attempt.
-The main reason I stoped was because Kotlin has too many features and I don't know how to implement some of those. I been working on my other [intepreter](https://github.com/cout970/Elm-interpreter) and I learned a lot but not enough to solve all problems.
+The project is abandoned, I'm working on a different compiler for my own language: [Nitro](https://github.com/cout970/NitroLang), the syntax is similar to kotlin and compiles to native and WASM.
 
 ### Why?
 Why a new interpreter if there is already a kotlin compiler and a kotlin REPL?
